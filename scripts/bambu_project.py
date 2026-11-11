@@ -594,13 +594,14 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
            ' <metadata name="BambuStudio:3mfVersion">1</metadata>', ' <resources>']
     main_res, build_items, cfg_objects, plate_inst, assemble = [], [], [], [], []
     mesh_id = 0
+    jn = job["name"]
     for oi, o in enumerate(objects):
         oid = 1000 + oi
         comps, cfg_parts = [], []
         for pi, p in enumerate(o["parts"]):
             mesh_id += 1
             c = o["_centre"]
-            sub.append(f'  <object id="{mesh_id}" p:UUID="{_uid(f"{job["name"]}/{oi}/{pi}/mesh")}" type="model">')
+            sub.append(f'  <object id="{mesh_id}" p:UUID="{_uid(f"{jn}/{oi}/{pi}/mesh")}" type="model">')
             sub.append("   <mesh>\n    <vertices>")
             sub += [f'     <vertex x="{_num(x - c[0])}" y="{_num(y - c[1])}" z="{_num(z - c[2])}"/>'
                     for x, y, z in p["v"]]
@@ -608,7 +609,7 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
             sub += [f'     <triangle v1="{a}" v2="{b}" v3="{cc}"/>' for a, b, cc in p["f"]]
             sub.append("    </triangles>\n   </mesh>\n  </object>")
             comps.append(f'    <component p:path="/3D/Objects/object_1.model" objectid="{mesh_id}" '
-                         f'p:UUID="{_uid(f"{job["name"]}/{oi}/{pi}/comp")}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>')
+                         f'p:UUID="{_uid(f"{jn}/{oi}/{pi}/comp")}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>')
             cfg_parts.append(
                 f'    <part id="{mesh_id}" subtype="normal_part">\n'
                 f'      <metadata key="name" value={quoteattr(p["name"])}/>\n'
@@ -619,9 +620,9 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
             assemble.append(f'   <assemble_item object_id="{oid}" volume_id="{pi}" '
                             'transform="1 0 0 0 1 0 0 0 1 0 0 0" />')
         x, y, z = (_num(v) for v in o["_place"])
-        main_res.append(f'  <object id="{oid}" p:UUID="{_uid(f"{job["name"]}/{oi}/object")}" type="model">\n'
+        main_res.append(f'  <object id="{oid}" p:UUID="{_uid(f"{jn}/{oi}/object")}" type="model">\n'
                         '   <components>\n' + "\n".join(comps) + '\n   </components>\n  </object>')
-        build_items.append(f'  <item objectid="{oid}" p:UUID="{_uid(f"{job["name"]}/{oi}/item")}" '
+        build_items.append(f'  <item objectid="{oid}" p:UUID="{_uid(f"{jn}/{oi}/item")}" '
                            f'transform="1 0 0 0 1 0 0 0 1 {x} {y} {z}" printable="1"/>')
         faces = sum(len(p["f"]) for p in o["parts"])
         cfg_objects.append(f'  <object id="{oid}">\n    <metadata key="name" value={quoteattr(o["name"])}/>\n'
