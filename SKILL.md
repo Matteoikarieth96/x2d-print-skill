@@ -28,8 +28,8 @@ for another language, translate the English one.
   inside them. The template must be a project **the person saved themselves** from their
   own Bambu Studio (Step 3), never a project downloaded or received from someone else.
   As a second line of defence the script replaces every G-code field with the official
-  values from the local Bambu Studio install, and refuses a template whose printer limits
-  (plate area, height, nozzle) or temperatures go beyond the official presets.
+  values from the local Bambu Studio install, and refuses a template or job whose printer
+  limits, motion settings or temperatures go beyond the official presets.
 - **Bambu's profiles are not copied anywhere.** The script reads them from the person's
   own install (they are AGPL-3.0 and change with each Bambu Studio release).
 - No weapons or weapon parts.
@@ -86,7 +86,8 @@ Copy [templates/job.example.json](templates/job.example.json) next to the STLs a
   is the main one (direct drive, fed by the AMS); the **right** one is auxiliary (Bowden,
   external spool, no TPU). Filaments in the AMS go `left`; the external spool goes `right`.
 - `settings` (optional): process overrides such as `wall_loops`, `sparse_infill_density`,
-  `enable_support`. Values are strings, as in Bambu Studio. G-code fields are refused.
+  `enable_support`. Values are strings, as in Bambu Studio. G-code fields are refused, and
+  so are printer limits, motion and temperature changes beyond the official presets.
 
 Before building, apply [references/colour-best-practices.md](references/colour-best-practices.md):
 dominant colour on its own nozzle, extra colours in few layers, one plate per group of
@@ -130,8 +131,10 @@ press Print in Bambu Studio themselves, and stay by the printer for the first la
 - The check fails to slice: run `check` on the file again to read Bambu Studio's message;
   most often a part is floating (not touching the bed) or bigger than the plate. `check`
   is for projects made with `build`: it refuses a project whose G-code is not official.
-- "changes printer limits or temperatures": the template is not a plain system-preset
-  project (or was edited). Ask the person to save a new template as in Step 3.
-- "already exists": add `--force` if it is the output of an earlier build of this job.
+- "changes printer limits, motion or temperatures": the template is not a plain
+  system-preset project (or was edited), or the job's `settings` asked for it. Remove that
+  setting from the job, or ask the person to save a new template as in Step 3.
+- "already exists": add `--force` only if that file is the output of an earlier build of
+  this job; otherwise pick another `output` name.
 
 How the script works and why: [references/how-it-works.md](references/how-it-works.md).

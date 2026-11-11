@@ -76,8 +76,9 @@ Job format: [templates/job.example.json](templates/job.example.json). Details:
   starting or stopping prints. You press Print in Bambu Studio.
 - It never copies Bambu's printer profiles: it reads them from your own Bambu Studio.
 - It never trusts G-code inside a `.3mf` you give it: every G-code field is replaced
-  with the official value from your install, and a template that changes the printer's
-  limits or temperatures beyond the official presets is refused.
+  with the official value from your install, and a template or job that changes the
+  printer's limits, motion settings or temperatures beyond the official presets is
+  refused.
 - It writes only the `.3mf` inside the job's folder, and replaces an existing file only
   when asked (`--force`).
 - The only program it runs is your local Bambu Studio, to slice the project in a

@@ -53,11 +53,18 @@ SAFETY_MACHINE_KEYS = (
     "printer_variant", "retraction_length", "retract_length_toolchange", "retraction_speed",
     "deretraction_speed", "z_hop", "extruder_clearance_radius",
     "extruder_clearance_height_to_rod", "extruder_clearance_height_to_lid",
-    "min_layer_height", "max_layer_height")
+    "min_layer_height", "max_layer_height", "z_offset")
+# Per-filament motion settings that must match the official filament presets.
+SAFETY_FILAMENT_PREFIXES = ("filament_retraction", "filament_retract_", "filament_deretraction",
+                            "filament_z_hop", "filament_max_volumetric_speed", "filament_wipe")
 # Settings that point Bambu Studio at a network host. Blanked in every project written.
 HOST_KEYS = ("print_host", "print_host_webui", "printhost_apikey", "printhost_cafile",
              "printhost_user", "printhost_password", "printhost_port")
 TEMP_MARGIN_C = 10      # bed and chamber may be this much above the official value
+# Entries of a project that `check` passes to Bambu Studio; anything else is dropped.
+CHECK_ENTRIES = ("3D/3dmodel.model", "3D/Objects/object_1.model", "Metadata/model_settings.config",
+                 SETTINGS_ENTRY, "Metadata/slice_info.config", "[Content_Types].xml", "_rels/.rels",
+                 "3D/_rels/3dmodel.model.rels")
 
 
 class UserError(Exception):
@@ -170,52 +177,87 @@ def _flat_values(v) -> list:
     return [str(x).strip() for x in items]
 
 
-def _floats(v) -> list:
+_NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?")
+
+
+def _numbers(key: str, v, problems: list) -> list:
+    """Every item of a temperature setting as a number; anything else is a problem."""
+    if not isinstance(v, (list, str, int, float)) or isinstance(v, bool):
+        problems.append(f"{key} is not a list of numbers")
+        return []
     out = []
     for x in _flat_values(v):
-        try:
-            f = float(x)
-        except ValueError:
-            continue
-        if math.isfinite(f):
-            out.append(f)
-        else:
-            out.append(float("inf"))
+        if not _NUMBER.fullmatch(x):
+            problems.append(f"{key} holds {x[:20]!r}, not a plain number")
+            return []
+        out.append(float(x))
     return out
 
 
+def _slots(key: str, values: list, n: int, problems: list) -> list:
+    """Split a per-filament list (possibly expanded per nozzle variant) into n slots."""
+    if n == 0 or not values or len(values) % n:
+        if values:
+            problems.append(f"{key} has {len(values)} values for {n} filaments")
+        return []
+    size = len(values) // n
+    return [values[i * size:(i + 1) * size] for i in range(n)]
+
+
+def _machine_safety_keys(mach: dict) -> list:
+    return sorted(set(SAFETY_MACHINE_KEYS) | {k for k in mach if k.startswith("machine_max_")})
+
+
+def _is_filament_safety_key(k: str) -> bool:
+    return k.startswith(SAFETY_FILAMENT_PREFIXES)
+
+
 def safety_problems(settings: dict, official: dict) -> list:
-    """Printer limits and temperatures in a template that the official presets do not allow.
+    """Printer limits, motion settings and temperatures that the official presets do not allow.
 
     Missing printer limits are filled in from the official printer preset (in place)."""
     problems = []
     mach = official["printer"]
-    for k in SAFETY_MACHINE_KEYS:
+    fils = official["filaments"]
+    for k in _machine_safety_keys(mach):
         if k not in mach:
+            if k in settings and _flat_values(settings[k]) not in (["0"], ["0.0"], []):
+                problems.append(f"{k} is {json.dumps(settings[k])[:60]}, official 0")
             continue
         if k not in settings:
             settings[k] = mach[k]
         elif _flat_values(settings[k]) != _flat_values(mach[k]):
             problems.append(f"{k} is {json.dumps(settings[k])[:60]}, official {json.dumps(mach[k])[:60]}")
-    fils = official["filaments"]
-    lows = [f for d in fils for f in _floats(d.get("nozzle_temperature_range_low", []))]
-    highs = [f for d in fils for f in _floats(d.get("nozzle_temperature_range_high", []))]
-    if lows and highs:
-        lo, hi = min(lows), max(highs)
-        for k in ("nozzle_temperature", "nozzle_temperature_initial_layer"):
-            bad = [t for t in _floats(settings.get(k, [])) if not lo <= t <= hi]
+    for k in sorted(k for k in settings if _is_filament_safety_key(k)):
+        concat = [x for d in fils for x in _flat_values(d.get(k, []))]
+        have = _flat_values(settings[k])
+        if concat and have != concat:
+            problems.append(f"{k} is {json.dumps(settings[k])[:60]}, official {json.dumps(concat)[:60]}")
+        elif not concat and any(x not in ("nil", "") for x in have):
+            problems.append(f"{k} is {json.dumps(settings[k])[:60]}, not set in the official presets")
+    n = len(fils)
+    for k in ("nozzle_temperature", "nozzle_temperature_initial_layer"):
+        if k not in settings:
+            continue
+        for i, slot in enumerate(_slots(k, _numbers(k, settings[k], problems), n, problems)):
+            lo = _numbers("range_low", fils[i].get("nozzle_temperature_range_low", []), [])
+            hi = _numbers("range_high", fils[i].get("nozzle_temperature_range_high", []), [])
+            if not lo or not hi:
+                continue
+            bad = [t for t in slot if not min(lo) <= t <= max(hi)]
             if bad:
-                problems.append(f"{k} {bad[0]:g} C is outside the official range {lo:g}-{hi:g} C")
+                problems.append(f"{k} {bad[0]:g} C for filament {i + 1} is outside its official "
+                                f"range {min(lo):g}-{max(hi):g} C")
     hot = [k for k in settings if k.endswith("_plate_temp") or k.endswith("_plate_temp_initial_layer")
            or k == "chamber_temperatures"]
-    for k in hot:
-        ref = [f for d in fils for f in _floats(d.get(k, []))]
-        if not ref:
-            continue
-        limit = max(ref) + TEMP_MARGIN_C
-        bad = [t for t in _floats(settings[k]) if not 0 <= t <= limit]
-        if bad:
-            problems.append(f"{k} {bad[0]:g} C is above the official {max(ref):g} C")
+    for k in sorted(hot):
+        for i, slot in enumerate(_slots(k, _numbers(k, settings[k], problems), n, problems)):
+            ref = _numbers(k, fils[i].get(k, []), [])
+            if not ref:
+                continue
+            bad = [t for t in slot if not 0 <= t <= max(ref) + TEMP_MARGIN_C]
+            if bad:
+                problems.append(f"{k} {bad[0]:g} C for filament {i + 1} is above the official {max(ref):g} C")
     return problems
 
 
@@ -470,7 +512,11 @@ def place_objects(objects, settings, gap=10.0):
         x += w + gap
 
 
-def build_project(job: dict, settings: dict, flat: dict | None, report: dict) -> bytes:
+def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
+                  official: dict | None = None) -> bytes:
+    if official is not None:
+        settings = dict(settings)
+        safety_problems(settings, official)      # fills missing printer limits; checked below
     n_fil = len(settings.get("filament_settings_id", []))
     if n_fil == 0:
         raise UserError("template has no filaments")
@@ -529,6 +575,12 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict) ->
         have = [x for x in diff[0].split(";") if x]
         diff[0] = ";".join(sorted(set(have) | set(process_changes)))
         s["different_settings_to_system"] = diff
+    if official is not None:
+        problems = safety_problems(s, official)
+        if problems:
+            raise UserError("the template or the job changes printer limits, motion or temperatures "
+                            "beyond the official presets: " + "; ".join(problems[:5]) + ". Save a new "
+                            "template from your own Bambu Studio with unmodified system presets.")
     version = str(s.get("version") or "")
     if not re.fullmatch(r"[0-9.]{1,20}", version):
         raise UserError("template has no Bambu Studio version")
@@ -689,11 +741,15 @@ def check_project(path: pathlib.Path, paths: dict) -> dict:
                         "use a downloaded project only after rebuilding it with 'build'.")
     problems = safety_problems(dict(settings), official)
     if problems:
-        raise UserError("this project changes printer limits or temperatures: " + "; ".join(problems[:5]))
+        raise UserError("this project changes printer limits, motion or temperatures: "
+                        + "; ".join(problems[:5]))
     fmap = settings.get("filament_map") if len(settings.get("nozzle_diameter", [])) > 1 else None
     with tempfile.TemporaryDirectory() as tmp:
         src = pathlib.Path(tmp) / "in.3mf"
-        shutil.copyfile(path, src)
+        with zipfile.ZipFile(path) as zin, zipfile.ZipFile(src, "w", zipfile.ZIP_DEFLATED) as zout:
+            for name in CHECK_ENTRIES:
+                if name in zin.namelist():
+                    zout.writestr(name, _read_entry(zin, name))
         res = _run_studio(paths["executable"], ["--slice", "1", "--outputdir", str(pathlib.Path(tmp) / "out"), str(src)], tmp)
         rj = pathlib.Path(tmp) / "out" / "result.json"
         if not rj.is_file():
@@ -793,7 +849,8 @@ def output_path(job: dict, value, template: pathlib.Path, force: bool) -> pathli
     real = out.resolve()
     if real != base and base not in real.parents:
         raise UserError(f"output must stay inside the job's folder ({base})")
-    if real == template.resolve():
+    if real == template.resolve() or (real.exists() and template.exists()
+                                      and os.path.samefile(real, template)):
         raise UserError("output would overwrite the settings template")
     if real.exists() and not real.is_file():
         raise UserError(f"{real} exists and is not a file")
@@ -812,17 +869,11 @@ def cmd_build(a):
         raise UserError("no settings template: pass --template or set 'template' in the job")
     settings = read_template(tpl)
     paths = studio_paths(a.studio)
-    flat = None
-    if not a.no_studio:
-        flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
-                                    list(settings["filament_settings_id"]))
-        problems = safety_problems(settings, official_presets(paths, settings))
-        if problems:
-            raise UserError("the template changes printer limits or temperatures beyond the official "
-                            "presets: " + "; ".join(problems[:5]) + ". Save a new template from your "
-                            "own Bambu Studio with system presets.")
+    flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
+                                list(settings["filament_settings_id"]))
+    official = official_presets(paths, settings)
     report = {"warnings": []}
-    data = build_project(job, settings, flat, report)
+    data = build_project(job, settings, flat, report, official)
     out = output_path(job, a.out or job.get("output"), tpl, a.force)
     out.parent.mkdir(parents=True, exist_ok=True)
     out = output_path(job, str(out), tpl, a.force)   # again, now that the folder exists
@@ -857,7 +908,6 @@ def main(argv=None):
     b.add_argument("--out")
     b.add_argument("--check", action="store_true", help="also slice it to check")
     b.add_argument("--force", action="store_true", help="replace an existing output file")
-    b.add_argument("--no-studio", action="store_true", help=argparse.SUPPRESS)
     b.set_defaults(fn=cmd_build)
     c = sp.add_parser("check", help="slice a project with Bambu Studio and report")
     c.add_argument("file")

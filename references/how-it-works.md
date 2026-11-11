@@ -32,10 +32,12 @@ Every XML entry is parsed back before the zip is written.
    change G-code live in separate "template" files reached only through `include`; Bambu
    Studio's own `--export-settings` skips them and returns a generic start G-code, which
    is why the script does not use it. If a preset is not a system preset, the build stops.
-   The printer limits (plate area, height, nozzle, retraction, clearances) must match the
-   official printer preset, nozzle temperatures must stay in the official filament range,
-   bed and chamber temperatures within 10 C of the official value; otherwise the build
-   stops. Network host settings (`print_host`, `printhost_apikey` and similar) are cleared.
+   The printer limits and motion settings (plate area and height, nozzle, z offset, clearances, the printer's maximum speeds and accelerations, and the retraction, z hop and flow limits of each filament) must match the official
+   presets, each filament's nozzle temperature must stay in that filament's official range,
+   and bed and chamber temperatures within 10 C of its official value. This is checked on
+   the final settings, after the job's overrides, so a job cannot undo it; otherwise the
+   build stops. Network host settings (`print_host`, `printhost_apikey` and similar) are
+   cleared.
 3. **The job's choices:** `filament_map` (left nozzle `"1"`, right nozzle `"2"`, one entry
    per filament) with `filament_map_mode` set to `Manual`, and the process overrides in
    `settings`. Manual mode avoids the automatic grouping, which on dual-nozzle printers

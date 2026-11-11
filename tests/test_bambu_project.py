@@ -1,6 +1,7 @@
 """Unit tests that need no Bambu Studio: python3 -m unittest discover -s tests"""
 import io
 import json
+import os
 import pathlib
 import struct
 import sys
@@ -39,7 +40,8 @@ def fake_profiles(root):
         "machine/common.json": {"name": "common", "machine_start_gcode": "GENERIC",
                                 "change_filament_gcode": "", "gcode_flavor": "marlin",
                                 "printable_area": ["0x0", "256x0", "256x256", "0x256 "],
-                                "printable_height": "250", "nozzle_diameter": ["0.4", "0.4"]},
+                                "printable_height": "250", "nozzle_diameter": ["0.4", "0.4"],
+                                "machine_max_speed_z": ["12", "12"]},
         "machine/Printer tpl start.json": {"name": "Printer tpl start", "instantiation": "false",
                                            "machine_start_gcode": "OFFICIAL START"},
         "machine/Printer tpl change.json": {"name": "Printer tpl change", "instantiation": "false",
@@ -52,8 +54,12 @@ def fake_profiles(root):
                                    "filament_end_gcode": ["; end"],
                                    "nozzle_temperature_range_low": ["190"],
                                    "nozzle_temperature_range_high": ["240"],
-                                   "textured_plate_temp": ["55"]},
+                                   "textured_plate_temp": ["55"],
+                                   "filament_retraction_length": ["0.8"]},
         "filament/PLA A.json": {"name": "PLA A", "inherits": "fil base"},
+        "filament/PC C.json": {"name": "PC C", "inherits": "fil base",
+                               "nozzle_temperature_range_low": ["260"],
+                               "nozzle_temperature_range_high": ["300"]},
         "filament/PLA B.json": {"name": "PLA B", "inherits": "fil base",
                                 "filament_start_gcode": ["; start B"]},
     }
@@ -75,6 +81,7 @@ def template_settings(**extra):
         "wipe_tower_y": ["220"], "curr_bed_type": "Textured PEI Plate", "version": "2.9.1.70",
         "wall_loops": "2", "different_settings_to_system": ["", "", "", ""],
         "nozzle_temperature": ["220", "220", "220", "220"], "textured_plate_temp": ["55", "60"],
+        "filament_retraction_length": ["0.8", "0.8"],
         # hostile values a downloaded template could carry
         "machine_start_gcode": "M104 S999 ; tampered", "post_process": ["/tmp/evil.sh"],
         "filament_start_gcode": ["tampered", "tampered"], "filename_format": "../../x",
@@ -282,7 +289,7 @@ class TestSafety(Base):
         self.job(template="tpl.3mf")
         code, err = self.run_main(["build", str(self.dir / "job.json")])
         self.assertEqual(code, 2)
-        self.assertIn("printer limits or temperatures", err)
+        self.assertIn("printer limits, motion or temperatures", err)
         self.assertFalse((self.dir / "test-job.3mf").exists())
 
     def test_host_keys_cleared(self):
@@ -350,6 +357,65 @@ class TestSafety(Base):
             fh.write(b"\0" * 80 + struct.pack("<I", 1) + struct.pack("<12f", *([0.0] * 3 + [float("nan")] * 9)) + b"\0\0")
         with self.assertRaises(bp.UserError):
             bp.read_stl(self.dir / "nan.stl")
+
+    def test_job_cannot_undo_safety(self):
+        self.write_template(template_settings())
+        self.job(template="tpl.3mf", settings={"nozzle_temperature": ["400", "400", "400", "400"]})
+        code, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        self.assertIn("nozzle_temperature", err)
+        self.assertFalse((self.dir / "test-job.3mf").exists())
+
+    def problems(self, **extra):
+        s = template_settings(**extra)
+        return " ".join(bp.safety_problems(s, bp.official_presets(self.paths, s)))
+
+    def test_non_numeric_temperatures_refused(self):
+        for bad in (["300abc", "220"], ["350,350", "220"], ["350 ;", "220"], {"a": 1}):
+            self.assertIn("nozzle_temperature", self.problems(nozzle_temperature=bad), bad)
+        self.assertIn("textured_plate_temp", self.problems(textured_plate_temp=["130x", "55"]))
+
+    def test_motion_and_offset_keys_checked(self):
+        self.assertIn("z_offset", self.problems(z_offset="-5"))
+        self.assertEqual(self.problems(z_offset="0"), "")
+        self.assertIn("machine_max_speed_z", self.problems(machine_max_speed_z=["99", "99"]))
+        self.assertIn("filament_retraction_length", self.problems(filament_retraction_length=["50", "0.8"]))
+        self.assertIn("filament_z_hop", self.problems(filament_z_hop=["40", "40"]))
+
+    def test_nozzle_range_per_filament(self):
+        # 280 C is fine for the PC in slot 2, not for the PLA in slot 1
+        found = self.problems(filament_settings_id=["PLA A", "PC C"], nozzle_temperature=["280", "280"])
+        self.assertIn("filament 1", found)
+        self.assertNotIn("filament 2", found)
+
+    def test_force_never_overwrites_template_through_a_link(self):
+        tpl = self.write_template(template_settings())
+        os.link(tpl, self.dir / "hard.3mf")
+        before = tpl.read_bytes()
+        self.job(template="tpl.3mf", output="hard.3mf")
+        code, err = self.run_main(["build", str(self.dir / "job.json"), "--force"])
+        self.assertEqual(code, 2)
+        self.assertIn("template", err)
+        self.assertEqual(tpl.read_bytes(), before)
+
+    def test_check_passes_only_expected_entries(self):
+        self.write_template(template_settings())
+        self.job(template="tpl.3mf")
+        self.assertEqual(self.run_main(["build", str(self.dir / "job.json")])[0], 0)
+        out = self.dir / "test-job.3mf"
+        with zipfile.ZipFile(out, "a") as z:
+            z.writestr("Metadata/custom_gcode_per_layer.xml", "<custom_gcodes_per_layer/>")
+        seen = {}
+
+        def fake_run(exe, args, cwd):
+            with zipfile.ZipFile(args[-1]) as z:
+                seen["names"] = z.namelist()
+            raise bp.UserError("slicer reached")
+        with mock.patch.object(bp, "_run_studio", side_effect=fake_run):
+            with self.assertRaises(bp.UserError):
+                bp.check_project(out, dict(self.paths, executable="/nonexistent/slicer"))
+        self.assertIn(bp.SETTINGS_ENTRY, seen["names"])
+        self.assertNotIn("Metadata/custom_gcode_per_layer.xml", seen["names"])
 
     def test_bad_input_gives_error_not_traceback(self):
         (self.dir / "job.json").write_text('{"name": "x", "objects": [1]}')
