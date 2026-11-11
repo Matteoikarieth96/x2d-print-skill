@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15]
+        os: [ubuntu-24.04, macos-15]
         python: ["3.9", "3.12"]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
