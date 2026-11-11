@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import pathlib
 import platform
@@ -42,6 +43,21 @@ SLICE_TIMEOUT_S = 600
 # replaced with the values of the official profiles installed on this computer.
 def _is_code_key(key: str) -> bool:
     return key.endswith("_gcode") or key in ("gcode_flavor", "post_process", "filename_format")
+
+
+# Printer limits that must match the official printer preset: a template that changes
+# them could make the head crash into the bed or print outside the plate.
+SAFETY_MACHINE_KEYS = (
+    "printable_area", "printable_height", "bed_exclude_area", "extruder_printable_area",
+    "extruder_printable_height", "nozzle_diameter", "nozzle_height", "printer_model",
+    "printer_variant", "retraction_length", "retract_length_toolchange", "retraction_speed",
+    "deretraction_speed", "z_hop", "extruder_clearance_radius",
+    "extruder_clearance_height_to_rod", "extruder_clearance_height_to_lid",
+    "min_layer_height", "max_layer_height")
+# Settings that point Bambu Studio at a network host. Blanked in every project written.
+HOST_KEYS = ("print_host", "print_host_webui", "printhost_apikey", "printhost_cafile",
+             "printhost_user", "printhost_password", "printhost_port")
+TEMP_MARGIN_C = 10      # bed and chamber may be this much above the official value
 
 
 class UserError(Exception):
@@ -141,6 +157,68 @@ class _Presets:
         return out
 
 
+def official_presets(paths: dict, settings: dict) -> dict:
+    """The resolved official presets named by a project's settings."""
+    pr = _Presets(paths.get("profiles"))
+    return {"printer": pr.resolve(settings["printer_settings_id"]),
+            "process": pr.resolve(settings["print_settings_id"]),
+            "filaments": [pr.resolve(f) for f in settings["filament_settings_id"]]}
+
+
+def _flat_values(v) -> list:
+    items = v if isinstance(v, list) else [v]
+    return [str(x).strip() for x in items]
+
+
+def _floats(v) -> list:
+    out = []
+    for x in _flat_values(v):
+        try:
+            f = float(x)
+        except ValueError:
+            continue
+        if math.isfinite(f):
+            out.append(f)
+        else:
+            out.append(float("inf"))
+    return out
+
+
+def safety_problems(settings: dict, official: dict) -> list:
+    """Printer limits and temperatures in a template that the official presets do not allow.
+
+    Missing printer limits are filled in from the official printer preset (in place)."""
+    problems = []
+    mach = official["printer"]
+    for k in SAFETY_MACHINE_KEYS:
+        if k not in mach:
+            continue
+        if k not in settings:
+            settings[k] = mach[k]
+        elif _flat_values(settings[k]) != _flat_values(mach[k]):
+            problems.append(f"{k} is {json.dumps(settings[k])[:60]}, official {json.dumps(mach[k])[:60]}")
+    fils = official["filaments"]
+    lows = [f for d in fils for f in _floats(d.get("nozzle_temperature_range_low", []))]
+    highs = [f for d in fils for f in _floats(d.get("nozzle_temperature_range_high", []))]
+    if lows and highs:
+        lo, hi = min(lows), max(highs)
+        for k in ("nozzle_temperature", "nozzle_temperature_initial_layer"):
+            bad = [t for t in _floats(settings.get(k, [])) if not lo <= t <= hi]
+            if bad:
+                problems.append(f"{k} {bad[0]:g} C is outside the official range {lo:g}-{hi:g} C")
+    hot = [k for k in settings if k.endswith("_plate_temp") or k.endswith("_plate_temp_initial_layer")
+           or k == "chamber_temperatures"]
+    for k in hot:
+        ref = [f for d in fils for f in _floats(d.get(k, []))]
+        if not ref:
+            continue
+        limit = max(ref) + TEMP_MARGIN_C
+        bad = [t for t in _floats(settings[k]) if not 0 <= t <= limit]
+        if bad:
+            problems.append(f"{k} {bad[0]:g} C is above the official {max(ref):g} C")
+    return problems
+
+
 def official_code_values(paths: dict, printer: str, process: str, filaments: list) -> dict:
     """Return the official value of every code key for these presets.
 
@@ -161,6 +239,17 @@ def official_code_values(paths: dict, printer: str, process: str, filaments: lis
             vals.append(v[0] if isinstance(v, list) and v else (v if isinstance(v, str) else ""))
         out[k] = vals
     out["post_process"] = []
+    return out
+
+
+def code_key_differences(s: dict, flat: dict) -> list:
+    """Code keys whose value in the settings is not the official one."""
+    out = []
+    for k in sorted(set(s) | set(flat)):
+        if _is_code_key(k):
+            new = flat.get(k, [] if k == "post_process" else "")
+            if s.get(k) != new:
+                out.append(k)
     return out
 
 
@@ -244,11 +333,18 @@ def read_stl(path: pathlib.Path):
         if 84 + 50 * n == len(raw):
             for i in range(n):
                 vals = struct.unpack_from("<12f", raw, 84 + 50 * i)
+                if not all(math.isfinite(x) for x in vals[3:12]):
+                    raise UserError(f"{path.name} has a vertex that is not a number")
                 tris.append((vals[3:6], vals[6:9], vals[9:12]))
     if not tris:
         text = raw.decode("ascii", errors="replace")
-        pts = [tuple(float(v) for v in m.groups()) for m in re.finditer(
-            r"vertex\s+(\S+)\s+(\S+)\s+(\S+)", text)]
+        try:
+            pts = [tuple(float(v) for v in m.groups()) for m in re.finditer(
+                r"vertex\s+(\S+)\s+(\S+)\s+(\S+)", text)]
+        except ValueError:
+            raise UserError(f"{path.name} is not a readable STL") from None
+        if not all(math.isfinite(c) for p in pts for c in p):
+            raise UserError(f"{path.name} has a vertex that is not a number")
         if len(pts) % 3 or not pts:
             raise UserError(f"{path.name} is not a readable STL")
         tris = [tuple(pts[i:i + 3]) for i in range(0, len(pts), 3)]
@@ -287,6 +383,8 @@ def bbox(verts):
 def load_job(path: pathlib.Path) -> dict:
     job = json.loads(path.read_text(encoding="utf-8"))
     base = path.parent
+    if not isinstance(job, dict):
+        raise UserError("job: the file must hold one JSON object")
     if not isinstance(job.get("objects"), list) or not job["objects"]:
         raise UserError("job: 'objects' must be a non-empty list")
     name = str(job.get("name", "")).strip()
@@ -295,9 +393,12 @@ def load_job(path: pathlib.Path) -> dict:
     job["name"] = name
     job["_base"] = base
     for obj in job["objects"]:
-        if not obj.get("parts"):
-            raise UserError(f"object {obj.get('name')!r} has no parts")
+        if not isinstance(obj, dict) or not isinstance(obj.get("parts"), list) or not obj["parts"]:
+            name = obj.get("name") if isinstance(obj, dict) else obj
+            raise UserError(f"object {name!r} has no parts")
         for part in obj["parts"]:
+            if not isinstance(part, dict) or not isinstance(part.get("stl"), str):
+                raise UserError("job: each part needs an 'stl' file name")
             if not isinstance(part.get("filament"), int) or part["filament"] < 1:
                 raise UserError(f"part {part.get('stl')!r}: 'filament' must be a number from 1")
             p = (base / part["stl"]).resolve()
@@ -357,6 +458,13 @@ def place_objects(objects, settings, gap=10.0):
     x = (bx0 + bx1) / 2 - total / 2
     if total > bx1 - bx0 - 10 or depth > by1 - by0 - 10:
         raise UserError(f"the objects ({total:.0f} x {depth:.0f} mm) do not fit on the bed")
+    try:
+        max_h = float(settings.get("printable_height") or 0)
+    except (TypeError, ValueError):
+        max_h = 0
+    height = max(o["_size"][2] for o in objects)
+    if max_h and height > max_h:
+        raise UserError(f"the objects are {height:.0f} mm tall, the printer prints up to {max_h:.0f} mm")
     for o, w in zip(objects, widths):
         o["_place"] = (x + w / 2, cy, o["_size"][2] / 2)
         x += w + gap
@@ -389,17 +497,19 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict) ->
     s = dict(settings)
     replaced = []
     if flat is not None:
+        replaced = code_key_differences(s, flat)
         for k in sorted(set(s) | set(flat)):
             if _is_code_key(k):
-                new = flat.get(k, [] if k == "post_process" else "")
-                if s.get(k) != new:
-                    replaced.append(k)
-                s[k] = new
+                s[k] = flat.get(k, [] if k == "post_process" else "")
     else:
         for k in list(s):
             if _is_code_key(k) and s[k] not in ("", [], [""]):
                 raise UserError("cannot verify the template's G-code without Bambu Studio")
     report["code_keys_replaced"] = replaced
+    for k in HOST_KEYS:
+        if s.get(k):
+            s[k] = ""
+            report["warnings"].append(f"template setting {k} was cleared")
     nm = nozzle_map(job, s)
     if nm is not None:
         s["filament_map"] = nm
@@ -564,7 +674,22 @@ def check_project(path: pathlib.Path, paths: dict) -> dict:
     if not paths.get("executable"):
         raise UserError("Bambu Studio is not installed: the check needs it")
     with zipfile.ZipFile(path) as z:
+        if SETTINGS_ENTRY not in z.namelist():
+            raise UserError(f"{path} has no Bambu Studio settings")
         settings = json.loads(_read_entry(z, SETTINGS_ENTRY).decode("utf-8"))
+    if not isinstance(settings, dict) or "printer_settings_id" not in settings:
+        raise UserError(f"{path}: settings are not from Bambu Studio")
+    official = official_presets(paths, settings)
+    flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
+                                list(settings["filament_settings_id"]))
+    unofficial = code_key_differences(settings, flat)
+    if unofficial:
+        raise UserError("this project carries G-code that is not the official one ("
+                        + ", ".join(unofficial[:6]) + "). Check only projects made with 'build'; "
+                        "use a downloaded project only after rebuilding it with 'build'.")
+    problems = safety_problems(dict(settings), official)
+    if problems:
+        raise UserError("this project changes printer limits or temperatures: " + "; ".join(problems[:5]))
     fmap = settings.get("filament_map") if len(settings.get("nozzle_diameter", [])) > 1 else None
     with tempfile.TemporaryDirectory() as tmp:
         src = pathlib.Path(tmp) / "in.3mf"
@@ -654,6 +779,29 @@ def cmd_templates(a):
     _print(out)
 
 
+def output_path(job: dict, value, template: pathlib.Path, force: bool) -> pathlib.Path:
+    """Where the project goes: a .3mf inside the job's folder, never the template, and an
+    existing file only with --force."""
+    base = job["_base"].resolve()
+    out = pathlib.Path(value or f"{job['name']}.3mf")
+    if not out.is_absolute():
+        out = base / out
+    if out.suffix.lower() != ".3mf":
+        raise UserError(f"output must end in .3mf: {out.name}")
+    if out.is_symlink():
+        raise UserError(f"{out} is a symbolic link; refusing to write through it")
+    real = out.resolve()
+    if real != base and base not in real.parents:
+        raise UserError(f"output must stay inside the job's folder ({base})")
+    if real == template.resolve():
+        raise UserError("output would overwrite the settings template")
+    if real.exists() and not real.is_file():
+        raise UserError(f"{real} exists and is not a file")
+    if real.exists() and not force:
+        raise UserError(f"{real.name} already exists: pass --force to replace it")
+    return real
+
+
 def cmd_build(a):
     job_path = pathlib.Path(a.job).resolve()
     job = load_job(job_path)
@@ -668,14 +816,16 @@ def cmd_build(a):
     if not a.no_studio:
         flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
                                     list(settings["filament_settings_id"]))
+        problems = safety_problems(settings, official_presets(paths, settings))
+        if problems:
+            raise UserError("the template changes printer limits or temperatures beyond the official "
+                            "presets: " + "; ".join(problems[:5]) + ". Save a new template from your "
+                            "own Bambu Studio with system presets.")
     report = {"warnings": []}
     data = build_project(job, settings, flat, report)
-    out = pathlib.Path(a.out or job.get("output") or f"{job['name']}.3mf")
-    if not out.is_absolute():
-        out = job["_base"] / out
+    out = output_path(job, a.out or job.get("output"), tpl, a.force)
     out.parent.mkdir(parents=True, exist_ok=True)
-    if out.is_symlink():
-        raise UserError(f"{out} is a symbolic link; refusing to write through it")
+    out = output_path(job, str(out), tpl, a.force)   # again, now that the folder exists
     out.write_bytes(data)
     report["output"] = str(out)
     report["template_path"] = str(tpl)
@@ -706,6 +856,7 @@ def main(argv=None):
     b.add_argument("--template")
     b.add_argument("--out")
     b.add_argument("--check", action="store_true", help="also slice it to check")
+    b.add_argument("--force", action="store_true", help="replace an existing output file")
     b.add_argument("--no-studio", action="store_true", help=argparse.SUPPRESS)
     b.set_defaults(fn=cmd_build)
     c = sp.add_parser("check", help="slice a project with Bambu Studio and report")
@@ -716,6 +867,10 @@ def main(argv=None):
         a.fn(a)
     except UserError as e:
         print(f"error: {e}", file=sys.stderr)
+        return 2
+    except (ValueError, KeyError, TypeError, AttributeError, RecursionError, OSError,
+            zipfile.BadZipFile) as e:
+        print(f"error: unreadable input ({type(e).__name__}: {str(e)[:200]})", file=sys.stderr)
         return 2
     return 0
 

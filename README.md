@@ -42,6 +42,7 @@ and linked to the printer, and what is loaded in the AMS.
 ## Install
 
 ```bash
+mkdir -p ~/.claude/skills
 git clone https://github.com/Matteoikarieth96/x2d-print-skill.git
 ln -s "$PWD/x2d-print-skill" ~/.claude/skills/x2d-print
 ```
@@ -75,7 +76,10 @@ Job format: [templates/job.example.json](templates/job.example.json). Details:
   starting or stopping prints. You press Print in Bambu Studio.
 - It never copies Bambu's printer profiles: it reads them from your own Bambu Studio.
 - It never trusts G-code inside a `.3mf` you give it: every G-code field is replaced
-  with the official value from your install.
+  with the official value from your install, and a template that changes the printer's
+  limits or temperatures beyond the official presets is refused.
+- It writes only the `.3mf` inside the job's folder, and replaces an existing file only
+  when asked (`--force`).
 - The only program it runs is your local Bambu Studio, to slice the project in a
   temporary folder for the check.
 

@@ -37,7 +37,9 @@ def fake_profiles(root):
         (bbl / sub).mkdir(parents=True)
     presets = {
         "machine/common.json": {"name": "common", "machine_start_gcode": "GENERIC",
-                                "change_filament_gcode": "", "gcode_flavor": "marlin"},
+                                "change_filament_gcode": "", "gcode_flavor": "marlin",
+                                "printable_area": ["0x0", "256x0", "256x256", "0x256 "],
+                                "printable_height": "250", "nozzle_diameter": ["0.4", "0.4"]},
         "machine/Printer tpl start.json": {"name": "Printer tpl start", "instantiation": "false",
                                            "machine_start_gcode": "OFFICIAL START"},
         "machine/Printer tpl change.json": {"name": "Printer tpl change", "instantiation": "false",
@@ -47,7 +49,10 @@ def fake_profiles(root):
         "process/proc.json": {"name": "proc", "filename_format": "{input_filename_base}.gcode",
                               "wall_loops": "2"},
         "filament/fil base.json": {"name": "fil base", "filament_start_gcode": ["; start base"],
-                                   "filament_end_gcode": ["; end"]},
+                                   "filament_end_gcode": ["; end"],
+                                   "nozzle_temperature_range_low": ["190"],
+                                   "nozzle_temperature_range_high": ["240"],
+                                   "textured_plate_temp": ["55"]},
         "filament/PLA A.json": {"name": "PLA A", "inherits": "fil base"},
         "filament/PLA B.json": {"name": "PLA B", "inherits": "fil base",
                                 "filament_start_gcode": ["; start B"]},
@@ -69,6 +74,7 @@ def template_settings(**extra):
         "filament_map": ["1", "1"], "printable_area": ["0x0", "256x0", "256x256", "0x256"],
         "wipe_tower_y": ["220"], "curr_bed_type": "Textured PEI Plate", "version": "2.9.1.70",
         "wall_loops": "2", "different_settings_to_system": ["", "", "", ""],
+        "nozzle_temperature": ["220", "220", "220", "220"], "textured_plate_temp": ["55", "60"],
         # hostile values a downloaded template could carry
         "machine_start_gcode": "M104 S999 ; tampered", "post_process": ["/tmp/evil.sh"],
         "filament_start_gcode": ["tampered", "tampered"], "filename_format": "../../x",
@@ -240,6 +246,119 @@ class TestCli(Base):
         bad.write_text("not a zip")
         with self.assertRaises(bp.UserError):
             bp.read_template(bad)
+
+
+class TestSafety(Base):
+    """Regression tests for the release review (hostile templates and projects)."""
+
+    def write_template(self, settings, name="tpl.3mf"):
+        tpl = self.dir / name
+        with zipfile.ZipFile(tpl, "w") as z:
+            z.writestr(bp.SETTINGS_ENTRY, json.dumps(settings))
+        return tpl
+
+    def run_main(self, argv):
+        err = io.StringIO()
+        with mock.patch.object(bp, "studio_paths", return_value=self.paths), \
+                redirect_stderr(err), redirect_stdout(io.StringIO()):
+            code = bp.main(argv)
+        return code, err.getvalue()
+
+    def test_official_template_passes_and_limits_filled(self):
+        s = template_settings()
+        self.assertEqual(bp.safety_problems(s, bp.official_presets(self.paths, s)), [])
+        self.assertEqual(s["printable_height"], "250")
+
+    def test_hostile_limits_and_temperatures_found(self):
+        s = template_settings(printable_height="999", nozzle_temperature=["320", "220"],
+                              textured_plate_temp=["110", "55"],
+                              printable_area=["-50x-50", "400x-50", "400x400", "-50x400"])
+        found = " ".join(bp.safety_problems(s, bp.official_presets(self.paths, s)))
+        for key in ("printable_height", "printable_area", "nozzle_temperature", "textured_plate_temp"):
+            self.assertIn(key, found)
+
+    def test_build_refuses_hostile_template(self):
+        self.write_template(template_settings(nozzle_temperature=["320", "220"]))
+        self.job(template="tpl.3mf")
+        code, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        self.assertIn("printer limits or temperatures", err)
+        self.assertFalse((self.dir / "test-job.3mf").exists())
+
+    def test_host_keys_cleared(self):
+        self.write_template(template_settings(print_host="http://192.0.2.1", printhost_apikey="k"))
+        self.job(template="tpl.3mf")
+        self.assertEqual(self.run_main(["build", str(self.dir / "job.json")])[0], 0)
+        with zipfile.ZipFile(self.dir / "test-job.3mf") as z:
+            s = json.loads(z.read(bp.SETTINGS_ENTRY))
+        self.assertEqual(s["print_host"], "")
+        self.assertEqual(s["printhost_apikey"], "")
+
+    def test_check_refuses_unofficial_gcode(self):
+        hostile = self.write_template(template_settings(), "downloaded.3mf")
+        paths = dict(self.paths, executable="/nonexistent/slicer")
+        with mock.patch.object(bp, "_run_studio", side_effect=AssertionError("slicer started")):
+            with self.assertRaises(bp.UserError) as ctx:
+                bp.check_project(hostile, paths)
+        self.assertIn("not the official one", str(ctx.exception))
+
+    def test_check_slices_built_project(self):
+        self.write_template(template_settings())
+        self.job(template="tpl.3mf")
+        self.assertEqual(self.run_main(["build", str(self.dir / "job.json")])[0], 0)
+        paths = dict(self.paths, executable="/nonexistent/slicer")
+        with mock.patch.object(bp, "_run_studio", side_effect=bp.UserError("slicer reached")):
+            with self.assertRaises(bp.UserError) as ctx:
+                bp.check_project(self.dir / "test-job.3mf", paths)
+        self.assertEqual(str(ctx.exception), "slicer reached")
+
+    def test_output_rules(self):
+        self.write_template(template_settings())
+        (self.dir / "victim.txt").write_text("keep")
+        other = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: [f.unlink() for f in other.iterdir()] and None or other.rmdir())
+        (self.dir / "linked").symlink_to(other, target_is_directory=True)
+        for output, expected in (("../escape.3mf", "inside the job"), ("victim.txt", ".3mf"),
+                                 ("tpl.3mf", "template"), ("linked/x.3mf", "inside the job")):
+            self.job(template="tpl.3mf", output=output)
+            code, err = self.run_main(["build", str(self.dir / "job.json")])
+            self.assertEqual(code, 2, output)
+            self.assertIn(expected, err, output)
+        self.assertEqual((self.dir / "victim.txt").read_text(), "keep")
+        self.assertEqual(list(other.iterdir()), [])
+
+    def test_existing_output_needs_force(self):
+        self.write_template(template_settings())
+        self.job(template="tpl.3mf")
+        job = str(self.dir / "job.json")
+        self.assertEqual(self.run_main(["build", job])[0], 0)
+        code, err = self.run_main(["build", job])
+        self.assertEqual(code, 2)
+        self.assertIn("--force", err)
+        self.assertEqual(self.run_main(["build", job, "--force"])[0], 0)
+
+    def test_too_tall_refused(self):
+        write_box_stl(self.dir / "tall.stl", 0, 0, 0, 20, 20, 300)
+        self.write_template(template_settings())
+        self.job(template="tpl.3mf", objects=[{"name": "t", "parts": [{"stl": "tall.stl", "filament": 1}]}])
+        code, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        self.assertIn("tall", err)
+
+    def test_nan_vertex_refused(self):
+        with open(self.dir / "nan.stl", "wb") as fh:
+            fh.write(b"\0" * 80 + struct.pack("<I", 1) + struct.pack("<12f", *([0.0] * 3 + [float("nan")] * 9)) + b"\0\0")
+        with self.assertRaises(bp.UserError):
+            bp.read_stl(self.dir / "nan.stl")
+
+    def test_bad_input_gives_error_not_traceback(self):
+        (self.dir / "job.json").write_text('{"name": "x", "objects": [1]}')
+        code, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        (self.dir / "job.json").write_text("[[[[" * 100000)
+        code, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        self.assertIn("error", err)
 
 
 if __name__ == "__main__":
