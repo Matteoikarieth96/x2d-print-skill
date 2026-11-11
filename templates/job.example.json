@@ -1,0 +1,16 @@
+{
+  "name": "coaster-two-colours",
+  "template": "x2d-template.3mf",
+  "objects": [
+    {
+      "name": "coaster",
+      "parts": [
+        {"stl": "coaster-base-black.stl", "filament": 5},
+        {"stl": "coaster-star-yellow.stl", "filament": 2}
+      ]
+    }
+  ],
+  "nozzles": {"1": "left", "2": "left", "3": "left", "4": "left", "5": "right"},
+  "settings": {"wall_loops": "3"},
+  "output": "out/coaster-two-colours.3mf"
+}
