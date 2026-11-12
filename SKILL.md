@@ -40,7 +40,10 @@ Ask only what is missing, at most one round, with `AskUserQuestion` when availab
 (recommended option first):
 1. **Which STL files**, and what colour each one should be. One STL per colour. If they
    have one STL for a multicolour model, it must be split first (a design tool, or
-   Bambu Studio's paint tool by hand).
+   Bambu Studio's paint tool by hand). If the STLs come from the **3d-print-design**
+   skill, an `x2d-job.json` sits next to them: read it first. It already says which STL
+   is which colour, the material, how many layers each colour spans and which nozzle
+   suits each part, so ask only what it leaves open.
 2. **Experience:** first print ever, a few prints, or experienced. First-timers get the
    full guide and the safety section; experienced people get the short version.
 3. **Is Bambu Studio installed and is the printer already linked** to it (Device tab
@@ -82,7 +85,14 @@ script will say so; the fix is to pick the system presets and save again.
 
 ## Step 4: the job file
 
-Copy [templates/job.example.json](templates/job.example.json) next to the STLs and fill it:
+If an `x2d-job.json` from 3d-print-design is next to the STLs, fill that file instead
+of copying the example: set `template`; give each part the number of the template
+filament whose colour matches its `colour` / `colour_hex` (ask when none matches or two
+match); set `nozzles` for those numbers following `design.suggested_nozzles`; check that
+the template's filaments are the `design.material`. The script ignores the `design` block
+and refuses the job while a `filament` is still empty.
+
+Otherwise copy [templates/job.example.json](templates/job.example.json) next to the STLs and fill it:
 - `objects`: one per physical object; `parts`: one per STL, with `filament` = the number
   in the template's filament list (1-based).
 - `nozzles`: for each filament number, `left` or `right`. On the X2D the **left** nozzle
