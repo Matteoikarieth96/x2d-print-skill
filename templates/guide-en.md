@@ -38,16 +38,24 @@ which {{PURGE_GRAMS}} g is purge, **{{CHANGES}} colour changes**.
    and change its filament number.
 4. **Check the plate.** The plate type shown must be the one on the printer (Textured PEI
    out of the box).
-5. **Slice.** Press **Slice plate** at the top right.
-6. **Look at the preview.** In the **Preview** tab, move up through the layers and check
+5. **More copies? (optional)** Select the object, add copies with the `+` key, then press
+   **Arrange** (`A` key): the copies spread out on their own, clear of the prime tower.
+   Copies share the same colour changes, so the waste per part drops; time and grams will
+   be higher than the numbers above.
+6. **Slice.** Press **Slice plate** at the top right.
+7. **Look at the preview.** In the **Preview** tab, move up through the layers and check
    the filament panel: time, grams and colour changes should be close to the numbers
-   above. Much more means a colour ended up on the wrong nozzle.
-7. **Send it.** Press **Print plate**. In the dialog, check line by line that every
+   above (higher if you added copies). Much more means a colour ended up on the wrong
+   nozzle.
+8. **Send it.** Press **Print plate**. In the dialog, check line by line that every
    filament points to the right AMS slot or to the external spool (left and right
-   nozzle). Leave bed levelling and flow calibration on Auto. Press **Send**.
-8. **Stay at the printer for the first layer** (5 to 10 minutes). If the plastic does not
+   nozzle). Leave bed levelling and flow calibration on Auto. Press **Send**: the print
+   starts right away. To start it from the printer screen instead, use the arrow next to
+   **Print plate**, then **Send**: the file goes to the printer's storage without
+   starting, and you start it on the screen, checking the colours there.
+9. **Stay at the printer for the first layer** (5 to 10 minutes). If the plastic does not
    stick or the nozzle drags, stop the print from the screen or the Device tab.
-9. **When it is done**, wait until the plate is cold, take it out, flex it gently and the
+10. **When it is done**, wait until the plate is cold, take it out, flex it gently and the
    part comes off. Remove the prime tower and purge line, put the plate back against its
    stops.
 

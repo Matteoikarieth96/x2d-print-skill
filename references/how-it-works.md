@@ -41,13 +41,18 @@ Every XML entry is parsed back before the zip is written.
 3. **The job's choices:** `filament_map` (left nozzle `"1"`, right nozzle `"2"`, one entry
    per filament) with `filament_map_mode` set to `Manual`, and the process overrides in
    `settings`. Manual mode avoids the automatic grouping, which on dual-nozzle printers
-   has open bugs that can put two filaments on the auxiliary nozzle.
+   has open bugs that can put two filaments on the auxiliary nozzle (Bambu Studio issues
+   #12915 and #13020, both still open in 02.09.01.70, November 2026).
 
 ## Placement
 
 Each object is centred on its own bounding box, laid on the bed (lowest point at z = 0)
 and placed in a row across the printable area, away from the prime tower position. If the
 row does not fit, the build stops and says so: split the job into plates.
+
+Placement uses the whole plate's printable area. The X2D's right nozzle has a smaller
+one (it cannot reach the 20.5 mm at the left edge and prints 5 mm lower); a part on that
+nozzle placed in the strip makes the check fail with Bambu Studio's out-of-area message.
 
 ## The check
 
@@ -73,6 +78,8 @@ same layer count, changes, grams and time as the same parts set up by hand in th
 ## Limits
 
 - One plate per 3MF. For two plates, two job files.
+- Each job object is placed once, in a row. To fill the plate, the person adds copies in
+  Bambu Studio (`+`, then Arrange with `A`); the check's numbers are for the job as built.
 - STL only (binary or ASCII); one STL per colour. Painted single-mesh models are not
   supported.
 - Parts keep the position they have in their STL relative to each other, so export all

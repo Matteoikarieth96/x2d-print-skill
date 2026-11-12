@@ -40,7 +40,10 @@ Ask only what is missing, at most one round, with `AskUserQuestion` when availab
 (recommended option first):
 1. **Which STL files**, and what colour each one should be. One STL per colour. If they
    have one STL for a multicolour model, it must be split first (a design tool, or
-   Bambu Studio's paint tool by hand). If the STLs come from the **3d-print-design**
+   Bambu Studio's paint tool by hand). Exception: if its colours change only by height
+   (each layer one colour), no split is needed. The person opens it in Bambu Studio and,
+   in Preview, right-clicks the layer slider at each new colour's first layer, **Change
+   Filament**. The script does not build that case, so guide them by hand. If the STLs come from the **3d-print-design**
    skill, an `x2d-job.json` sits next to them: read it first. It already says which STL
    is which colour, the material, how many layers each colour spans and which nozzle
    suits each part, so ask only what it leaves open.
@@ -97,12 +100,16 @@ Otherwise copy [templates/job.example.json](templates/job.example.json) next to 
   in the template's filament list (1-based).
 - `nozzles`: for each filament number, `left` or `right`. On the X2D the **left** nozzle
   is the main one (direct drive, fed by the AMS); the **right** one is auxiliary (Bowden,
-  external spool, no TPU). Filaments in the AMS go `left`; the external spool goes `right`.
+  usually the external spool, no TPU, up to 200 mm/s, meant mainly for supports). In the
+  usual Combo setup, one AMS on the left nozzle, filaments in the AMS go `left` and the
+  external spool goes `right`. An AMS can also feed the right nozzle (a second AMS, or
+  Bambu's filament track switch): then ask which nozzle each AMS slot feeds.
 - `settings` (optional): process overrides such as `wall_loops`, `sparse_infill_density`,
   `enable_support`. Values are strings, as in Bambu Studio. G-code fields are refused, and
   so are printer limits, motion and temperature changes beyond the official presets.
 
 Before building, apply [references/colour-best-practices.md](references/colour-best-practices.md):
+colours by height on the left nozzle when each layer holds one colour, otherwise the
 dominant colour on its own nozzle, extra colours in few layers, one plate per group of
 objects that would alternate colours on the same nozzle, one material per print. Tell the
 person what you chose and why, in one or two sentences.
@@ -147,6 +154,15 @@ press Print in Bambu Studio themselves, and stay by the printer for the first la
 - "changes printer limits, motion or temperatures": the template is not a plain
   system-preset project (or was edited), or the job's `settings` asked for it. Remove that
   setting from the job, or ask the person to save a new template as in Step 3.
+- The check fails, or Bambu Studio warns, that a part is outside a nozzle's printable
+  area: the right nozzle cannot reach a 20.5 mm strip at the left edge of the plate
+  (it covers 235.5 of the 256 mm) and prints 5 mm lower. Split the job so fewer
+  objects share the row, or move that colour to the left nozzle, then rebuild.
+- Parts show on the wrong nozzle after opening, or Bambu Studio has regrouped the
+  filaments: the filament grouping must stay **Custom** (manual), as the project was
+  saved. The automatic modes (Filament-Saving, Convenience) have open bugs that put two
+  filaments on the right nozzle (Bambu Studio issues #12915 and #13020, still open in
+  02.09.01.70). Set it back to Custom with each filament on the nozzle in the guide.
 - "already exists": add `--force` only if that file is the output of an earlier build of
   this job; otherwise pick another `output` name.
 - "rewritten by another slicer" or "not the Bambu Lab X2D", or Bambu Studio shows

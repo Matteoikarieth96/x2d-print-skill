@@ -38,18 +38,25 @@ filamento, di cui {{GRAMMI_SPURGO}} g di spurgo, **{{CAMBI}} cambi colore**.
    selezionala nella lista degli oggetti e cambia il numero del filamento.
 4. **Controlla il piatto.** Il tipo di piatto indicato deve essere quello montato in
    macchina (di serie, Textured PEI).
-5. **Affetta.** Premi **Affetta piatto** (Slice plate) in alto a destra.
-6. **Guarda l'anteprima.** Nella scheda **Anteprima** scorri gli strati dal basso e
+5. **Più copie? (facoltativo)** Seleziona l'oggetto, aggiungi copie con il tasto `+`,
+   poi premi **Disponi** (Arrange, tasto `A`): le copie si sistemano da sole lontano
+   dalla torre di spurgo. Le copie si dividono gli stessi cambi colore, quindi lo spreco
+   per pezzo scende; tempo e grammi però saranno più alti dei numeri scritti sopra.
+6. **Affetta.** Premi **Affetta piatto** (Slice plate) in alto a destra.
+7. **Guarda l'anteprima.** Nella scheda **Anteprima** scorri gli strati dal basso e
    controlla i numeri del pannello dei filamenti: tempo, grammi e cambi colore devono
-   essere vicini a quelli scritti sopra. Molto di più vuol dire che un colore è finito
-   sull'ugello sbagliato.
-7. **Manda in stampa.** Premi **Stampa piatto**. Nella finestra che si apre controlla
+   essere vicini a quelli scritti sopra (più alti se hai aggiunto copie). Molto di più
+   vuol dire che un colore è finito sull'ugello sbagliato.
+8. **Manda in stampa.** Premi **Stampa piatto**. Nella finestra che si apre controlla
    riga per riga che ogni filamento punti allo slot giusto dell'AMS o alla bobina esterna
    (ugello sinistro e destro). Lascia livellamento del piatto e calibrazione del flusso su
-   Auto. Premi **Invia**.
-8. **Resta davanti alla stampante per il primo strato** (5-10 minuti). Se il filo non
+   Auto. Premi **Invia**: la stampa parte subito. Se preferisci avviarla dallo schermo
+   della stampante, usa invece la freccia accanto a **Stampa piatto**, poi **Invia**
+   (Send): il file arriva nella memoria della stampante senza partire, e lo avvii dallo
+   schermo, controllando lì i colori.
+9. **Resta davanti alla stampante per il primo strato** (5-10 minuti). Se il filo non
    attacca o l'ugello trascina, ferma la stampa dallo schermo o dalla scheda Device.
-9. **A fine stampa** aspetta che il piatto sia freddo, toglilo, flettilo piano e il pezzo
+10. **A fine stampa** aspetta che il piatto sia freddo, toglilo, flettilo piano e il pezzo
    si stacca. Togli torre di spurgo e linea di spurgo, rimetti il piatto contro i suoi
    fermi.
 

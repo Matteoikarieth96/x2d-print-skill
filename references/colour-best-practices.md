@@ -22,35 +22,48 @@ part.
 
 1. **Count changes, not colours.** Waste grows with (layers that hold several colours on
    the same nozzle) x (colours per layer). Ask: in how many layers do the colours meet?
-2. **Give the dominant colour its own nozzle.** Put the colour that runs through most
-   layers (base, body) on one nozzle and the accents on the other: switching nozzle is
-   free. On the X2D the AMS feeds the left nozzle, so the dominant colour usually goes on
-   the external spool and the right nozzle, unless it is TPU (the right nozzle cannot
-   print TPU) or a material the Bowden right side handles poorly.
-3. **Keep accent colours in few layers.** Inlays face down on the plate (the first 3 to 5
+2. **Colours by height when you can.** If every layer holds a single colour (a base,
+   then lettering on top, then an accent), each plate has a fixed number of changes
+   (colours minus one), whatever the number of copies. Keep all colours on the left
+   nozzle then: moving one to the right nozzle saves a single change, and the right
+   nozzle is the slower one (up to 200 mm/s, acceleration up to 1000 mm/s²), meant by
+   Bambu mainly for supports. A single STL whose colours change only by height does not
+   even need splitting: in Bambu Studio's Preview, right-click the layer slider at the
+   first layer of each new colour and choose **Change Filament**.
+3. **Give the dominant colour its own nozzle** when the colours meet in many layers. Put
+   the colour that runs through most layers (base, body) on one nozzle and the accents on
+   the other: switching nozzle is free. In the usual X2D Combo setup the AMS feeds the
+   left nozzle, so the dominant colour usually goes on the external spool and the right
+   nozzle, unless it is TPU (the right nozzle cannot print TPU) or a material the Bowden
+   right side handles poorly. The right nozzle cannot reach a 20.5 mm strip at the left
+   edge of the plate and prints 5 mm lower, so parts on it need that margin.
+4. **Keep accent colours in few layers.** Inlays face down on the plate (the first 3 to 5
    layers, and the face against the plate comes out smooth) or on top. A colour that
    runs the full height of a part on the same nozzle as another colour costs a change on
    every layer.
-4. **Do not alternate colours on the same nozzle without need.** Two objects with
+5. **Do not alternate colours on the same nozzle without need.** Two objects with
    different colours on one plate, sharing layers and the same nozzle, alternate on every
    layer. Print them on separate plates (one 3MF each), or put their colours on different
    nozzles.
-5. **Group copies.** Several copies of the same multicolour part on one plate share each
-   colour change: waste per part drops.
-6. **Thicker layers, fewer changes.** 0.24 or 0.28 mm instead of 0.20 cuts the number of
+6. **Group copies.** Several copies of the same multicolour part on one plate share each
+   colour change: waste per part drops. The script builds one copy of each object; to
+   fill the plate, the person selects the object in Bambu Studio, adds copies with `+`
+   and presses **Arrange** (`A`), which keeps clear of the prime tower. Time and grams
+   then grow beyond the guide's numbers, the number of changes much less.
+7. **Thicker layers, fewer changes.** 0.24 or 0.28 mm instead of 0.20 cuts the number of
    layers, and so the changes, for parts where detail is not critical.
-7. **One material per print.** PLA with PETG (or other mixes) bond poorly and need
+8. **One material per print.** PLA with PETG (or other mixes) bond poorly and need
    different temperatures. Mixing is for experts (soluble or breakaway supports).
-8. **Dark to light is the expensive change.** Going from black to white needs much more
+9. **Dark to light is the expensive change.** Going from black to white needs much more
    flush than white to black. Bambu Studio orders the colours inside each layer to save
    flush, but white or yellow details sharing a nozzle with a dark colour still cost the
    most: that pair is the first to split across the two nozzles.
-9. **Leave the prime tower on** with several colours: it stabilises the nozzle after a
-   change. **Flush into support** is on by default; **flush into infill** is fine only
-   for opaque parts where the mixed colour hidden inside does not matter.
-10. **Flush multiplier stays at 1.0.** 0.8 to 0.9 can be tested on a scrap print once the
+10. **Leave the prime tower on** with several colours: it stabilises the nozzle after a
+    change. **Flush into support** is on by default; **flush into infill** is fine only
+    for opaque parts where the mixed colour hidden inside does not matter.
+11. **Flush multiplier stays at 1.0.** 0.8 to 0.9 can be tested on a scrap print once the
     person knows what colour bleeding looks like; never on a first print.
-11. **Zero flush option:** print each colour as a separate part and glue them.
+12. **Zero flush option:** print each colour as a separate part and glue them.
 
 ## Flush volumes after opening a project
 
@@ -98,4 +111,5 @@ re-calculate option.
 - Flushing volumes guide: https://www.3dprofilefix.com/guides/flushing-volumes-guide.html
 - X2D Bambu Studio settings: https://printer-hub.ru/posts/bambu-lab-x2d-bambu-studio-settings
 - Forum, flushing volume calibration: https://forum.bambulab.com/t/ams-flushing-volumes-calibration-purge-reduction/37062
-- Bambu Studio issues on automatic grouping with two nozzles (why the script uses Manual mode): https://github.com/bambulab/BambuStudio/issues/13020 and https://github.com/bambulab/BambuStudio/issues/12915
+- Bambu Studio issues on automatic grouping with two nozzles (why the script uses Manual mode; both still open in Bambu Studio 02.09.01.70, November 2026): https://github.com/bambulab/BambuStudio/issues/13020 and https://github.com/bambulab/BambuStudio/issues/12915
+- Bambu Studio source for the layer slider's "Change Filament" and the X2D's per-nozzle printable area: https://github.com/bambulab/BambuStudio (`src/slic3r/GUI/IMSlider.cpp`, `resources/profiles/BBL/machine/Bambu Lab X2D 0.4 nozzle.json`)

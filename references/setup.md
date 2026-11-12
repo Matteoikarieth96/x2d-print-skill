@@ -93,7 +93,8 @@ The person does this, with you explaining:
    and check.
 2. **Check the colours:** the filament list on the left shows the colours; each part in
    the Objects list shows its filament number. Press Sync if the AMS changed. The colour
-   of each part on the plate must be the one you planned.
+   of each part on the plate must be the one you planned. To fill the plate, select the
+   object, add copies with `+` and press **Arrange** (`A`).
 3. **Plate type:** the plate shown at the top of the filament area must be the one really
    on the printer (Textured PEI by default on the X2D).
 4. **Slice plate** (top right).
@@ -102,7 +103,11 @@ The person does this, with you explaining:
    A much bigger purge or more changes than the guide says means a colour moved.
 6. **Print plate**. In the send dialog: check that every filament points to the right
    AMS slot or to the external spool (left and right nozzle), leave bed levelling and
-   flow calibration on Auto, timelapse as they like, then **Send**.
+   flow calibration on Auto, timelapse as they like, then **Send**: the print starts
+   right away. To start it from the printer screen instead (for example when the
+   computer is in another room), the arrow next to **Print plate** offers **Send**,
+   which only uploads the file to the printer's storage; the person starts it on the
+   touchscreen, standing at the printer, after checking the colours it shows.
 7. **Stay by the printer for the first layer** (the first 5 to 10 minutes). If the first
    layer does not stick or the nozzle drags, stop from the screen or the Device tab.
 
