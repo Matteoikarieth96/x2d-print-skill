@@ -25,8 +25,13 @@ filamento, di cui {{GRAMMI_SPURGO}} g di spurgo, **{{CAMBI}} cambi colore**.
 
 1. **Bobine.** Controlla che nell'AMS e sul supporto esterno ci siano i colori della
    tabella, ognuno nel posto giusto.
-2. **Apri il progetto.** Doppio clic su `{{FILE_3MF}}` (oppure File, Apri progetto). Se
-   Bambu Studio chiede se caricare anche le impostazioni del progetto, rispondi **sì**.
+2. **Apri il progetto da Bambu Studio.** Avvia Bambu Studio, poi **File, Apri progetto**
+   e scegli `{{FILE_3MF}}`. Mai doppio clic sul file: se sul computer c'è un altro slicer
+   (QIDI Studio, OrcaSlicer e altri), il file può aprirsi lì, e quel programma lo
+   riscrive per la sua stampante. Se Bambu Studio chiede se caricare anche le
+   impostazioni del progetto, rispondi **sì**. In alto a sinistra la stampante deve
+   essere **Bambu Lab X2D**; se ne vedi un'altra, chiudi il progetto **senza salvare** e
+   fai ricreare il file.
 3. **Controlla i colori.** Nella colonna di sinistra premi l'icona di **sincronizzazione**
    accanto ai filamenti: la lista prende i colori veri dell'AMS. Guarda il pezzo sul
    piatto: ogni parte deve avere il colore della tabella. Se una parte è sbagliata,

@@ -41,6 +41,7 @@ def fake_profiles(root):
                                 "change_filament_gcode": "", "gcode_flavor": "marlin",
                                 "printable_area": ["0x0", "256x0", "256x256", "0x256 "],
                                 "printable_height": "250", "nozzle_diameter": ["0.4", "0.4"],
+                                "printer_model": "Bambu Lab X2D",
                                 "machine_max_speed_z": ["12", "12"]},
         "machine/Printer tpl start.json": {"name": "Printer tpl start", "instantiation": "false",
                                            "machine_start_gcode": "OFFICIAL START"},
@@ -75,6 +76,7 @@ def fake_profiles(root):
 def template_settings(**extra):
     s = {
         "printer_settings_id": "Printer 0.4", "print_settings_id": "proc",
+        "printer_model": "Bambu Lab X2D",
         "filament_settings_id": ["PLA A", "PLA B"], "filament_colour": ["#FFFFFF", "#000000"],
         "filament_type": ["PLA", "PLA"], "nozzle_diameter": ["0.4", "0.4"],
         "filament_map": ["1", "1"], "printable_area": ["0x0", "256x0", "256x256", "0x256"],
@@ -88,6 +90,16 @@ def template_settings(**extra):
     }
     s.update(extra)
     return s
+
+
+def write_3mf(path, settings, app="BambuStudio-02.09.01.70"):
+    """A project as Bambu Studio (or, with another app, a different slicer) saves it."""
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(bp.SETTINGS_ENTRY, json.dumps(settings))
+        if app is not None:
+            z.writestr(bp.MODEL_ENTRY, '<?xml version="1.0" encoding="UTF-8"?>\n<model>\n'
+                       f' <metadata name="Application">{app}</metadata>\n</model>\n')
+    return path
 
 
 class Base(unittest.TestCase):
@@ -224,8 +236,7 @@ class TestGcode(Base):
 class TestCli(Base):
     def test_build_writes_file(self):
         tpl = self.dir / "tpl.3mf"
-        with zipfile.ZipFile(tpl, "w") as z:
-            z.writestr(bp.SETTINGS_ENTRY, json.dumps(template_settings()))
+        write_3mf(tpl, template_settings())
         self.job(template="tpl.3mf", output="out/tag.3mf")
         with mock.patch.object(bp, "studio_paths", return_value=self.paths), \
                 redirect_stdout(io.StringIO()):
@@ -234,8 +245,7 @@ class TestCli(Base):
 
     def test_symlink_output_refused(self):
         tpl = self.dir / "tpl.3mf"
-        with zipfile.ZipFile(tpl, "w") as z:
-            z.writestr(bp.SETTINGS_ENTRY, json.dumps(template_settings()))
+        write_3mf(tpl, template_settings())
         target = self.dir / "elsewhere.3mf"
         target.write_text("keep")
         (self.dir / "out.3mf").symlink_to(target)
@@ -259,10 +269,7 @@ class TestSafety(Base):
     """Regression tests for the release review (hostile templates and projects)."""
 
     def write_template(self, settings, name="tpl.3mf"):
-        tpl = self.dir / name
-        with zipfile.ZipFile(tpl, "w") as z:
-            z.writestr(bp.SETTINGS_ENTRY, json.dumps(settings))
-        return tpl
+        return write_3mf(self.dir / name, settings)
 
     def run_main(self, argv):
         err = io.StringIO()
@@ -425,6 +432,116 @@ class TestSafety(Base):
         code, err = self.run_main(["build", str(self.dir / "job.json")])
         self.assertEqual(code, 2)
         self.assertIn("error", err)
+
+
+class TestSlicerOrigin(Base):
+    """Incident 2026-11-12: a double click opened a built project in QIDI Studio, which
+    rewrote it for a Qidi Q1 Pro; Bambu Studio then crashed on Print."""
+
+    QIDI = dict(printer_model="Q1 Pro", printer_settings_id="Q1 Pro 0.4 nozzle")
+
+    def run_main(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(bp, "studio_paths", return_value=self.paths), \
+                redirect_stderr(err), redirect_stdout(out):
+            code = bp.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_template_from_other_slicer_refused(self):
+        tpl = write_3mf(self.dir / "t.3mf", template_settings(**self.QIDI), "QIDIStudio-02.07.02.60")
+        with self.assertRaises(bp.UserError) as ctx:
+            bp.read_template(tpl)
+        msg = str(ctx.exception)
+        self.assertIn("another slicer", msg)
+        self.assertIn("QIDIStudio-02.07.02.60", msg)
+        self.assertIn("Save Project As", msg)
+
+    def test_template_for_other_printer_refused(self):
+        tpl = write_3mf(self.dir / "t.3mf", template_settings(printer_model="Bambu Lab P2S"))
+        with self.assertRaises(bp.UserError) as ctx:
+            bp.read_template(tpl)
+        self.assertIn("Bambu Lab P2S", str(ctx.exception))
+        self.assertIn("not the Bambu Lab X2D", str(ctx.exception))
+
+    def test_template_without_application_refused(self):
+        tpl = write_3mf(self.dir / "t.3mf", template_settings(), app=None)
+        with self.assertRaises(bp.UserError) as ctx:
+            bp.read_template(tpl)
+        self.assertIn("not saved by Bambu Studio", str(ctx.exception))
+
+    def test_templates_listing_reports_rewritten_file(self):
+        good = write_3mf(self.dir / "good.3mf", template_settings())
+        bad = write_3mf(self.dir / "bad.3mf", template_settings(**self.QIDI), "OrcaSlicer-2.3.0")
+        code, out, _ = self.run_main(["templates", str(good), str(bad)])
+        self.assertEqual(code, 0)
+        rows = json.loads(out)
+        self.assertNotIn("error", rows[0])
+        self.assertIn("another slicer", rows[1]["error"])
+
+    def test_build_refuses_rewritten_template(self):
+        write_3mf(self.dir / "tpl.3mf", template_settings(**self.QIDI), "QIDIStudio-02.07.02.60")
+        self.job(template="tpl.3mf")
+        code, _, err = self.run_main(["build", str(self.dir / "job.json")])
+        self.assertEqual(code, 2)
+        self.assertIn("another slicer", err)
+        self.assertFalse((self.dir / "test-job.3mf").exists())
+
+    def built_then_rewritten(self, app, **settings):
+        """Build a project, then rewrite it the way another slicer would."""
+        write_3mf(self.dir / "tpl.3mf", template_settings())
+        self.job(template="tpl.3mf")
+        self.assertEqual(self.run_main(["build", str(self.dir / "job.json")])[0], 0)
+        built = self.dir / "test-job.3mf"
+        with zipfile.ZipFile(built) as z:
+            entries = {n: z.read(n) for n in z.namelist()}
+        self.assertIn(b"BambuStudio-", entries[bp.MODEL_ENTRY])
+        s = json.loads(entries[bp.SETTINGS_ENTRY])
+        s.update(settings)
+        entries[bp.SETTINGS_ENTRY] = json.dumps(s).encode()
+        entries[bp.MODEL_ENTRY] = entries[bp.MODEL_ENTRY].replace(
+            b"BambuStudio-2.9.1.70", app.encode())
+        with zipfile.ZipFile(built, "w") as z:
+            for n, data in entries.items():
+                z.writestr(n, data)
+        return built
+
+    def test_check_refuses_project_rewritten_by_another_slicer(self):
+        built = self.built_then_rewritten("QIDIStudio-02.07.02.60", **self.QIDI)
+        paths = dict(self.paths, executable="/nonexistent/slicer")
+        with mock.patch.object(bp, "_run_studio", side_effect=AssertionError("slicer started")):
+            with self.assertRaises(bp.UserError) as ctx:
+                bp.check_project(built, paths)
+        msg = str(ctx.exception)
+        self.assertIn("another slicer (QIDIStudio-02.07.02.60, printer Q1 Pro)", msg)
+        self.assertIn("--force", msg)
+        self.assertIn("File, Open project", msg)
+
+    def test_check_refuses_other_printer_model(self):
+        built = self.built_then_rewritten("BambuStudio-2.9.1.70", printer_model="Bambu Lab H2D")
+        paths = dict(self.paths, executable="/nonexistent/slicer")
+        with mock.patch.object(bp, "_run_studio", side_effect=AssertionError("slicer started")):
+            with self.assertRaises(bp.UserError) as ctx:
+                bp.check_project(built, paths)
+        self.assertIn("Bambu Lab H2D", str(ctx.exception))
+
+    def test_other_slicers_found(self):
+        apps = self.dir / "Applications"
+        for name in ("BambuStudio.app", "QIDIStudio.app", "OrcaSlicer.app", "Safari.app",
+                     "UltiMaker Cura.app", "Accurate Notes.app"):
+            (apps / name).mkdir(parents=True)
+        found = bp.other_slicers([apps, self.dir / "missing"])
+        self.assertEqual(found, ["OrcaSlicer.app", "QIDIStudio.app", "UltiMaker Cura.app"])
+
+    def test_studio_warns_about_other_slicers(self):
+        with mock.patch.object(bp, "other_slicers", return_value=["QIDIStudio.app"]):
+            code, out, _ = self.run_main(["studio"])
+        self.assertEqual(code, 0)
+        r = json.loads(out)
+        self.assertEqual(r["other_slicers"], ["QIDIStudio.app"])
+        self.assertIn("File, Open project", r["warning"])
+        with mock.patch.object(bp, "other_slicers", return_value=[]):
+            r = json.loads(self.run_main(["studio"])[1])
+        self.assertNotIn("warning", r)
 
 
 if __name__ == "__main__":

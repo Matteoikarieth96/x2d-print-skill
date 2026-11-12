@@ -16,8 +16,9 @@ group of objects that would keep swapping colours.
 
 ## What you get
 
-- `out/<name>.3mf`: double click, Bambu Studio opens it with printer, plate, colours,
-  nozzles and process already set.
+- `out/<name>.3mf`: open it from Bambu Studio (File, Open project) and it comes with
+  printer, plate, colours, nozzles and process already set. Do not double-click it if
+  another slicer is installed: see [When things go wrong](#when-things-go-wrong).
 - A short guide in your language with the filament table, the expected time and grams,
   and the steps: sync AMS colours, check, slice, send, stay for the first layer.
 - A check report: estimated time, colour changes per layer, grams of model and purge per
@@ -36,8 +37,7 @@ and linked to the printer, and what is loaded in the AMS.
 - Bambu Studio 2.9 or later, from Bambu Lab's site or
   [its GitHub releases](https://github.com/bambulab/BambuStudio/releases), opened at
   least once
-- A Bambu Lab X2D. Other Bambu printers will probably work with a template saved for
-  them, but only the X2D was tested.
+- A Bambu Lab X2D. Templates and projects for any other printer are refused.
 
 ## Install
 
@@ -85,6 +85,17 @@ Job format: [templates/job.example.json](templates/job.example.json). Details:
   temporary folder for the check.
 
 Threat model and how to report a problem: [SECURITY.md](SECURITY.md).
+
+## When things go wrong
+
+- **Bambu Studio shows another printer, or crashes when you press Print.** The `.3mf`
+  was probably opened with a double click in another slicer (QIDI Studio, OrcaSlicer
+  and other Bambu Studio forks open `.3mf` files too) and saved there, which converts it
+  to that slicer's printer. Close it without saving, rebuild it
+  (`build job.json --force --check`) and open the new file from Bambu Studio with File,
+  Open project. `check` and `templates` refuse such a file and say so, and `studio`
+  lists the other slicers installed.
+- The script's error messages say what to fix; [SKILL.md](SKILL.md) lists the common ones.
 
 ## Limitations
 

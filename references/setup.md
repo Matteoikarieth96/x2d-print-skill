@@ -83,9 +83,14 @@ fails and the account route works, use the account route and check the release n
 
 The person does this, with you explaining:
 
-1. **Open** the `.3mf` (double click, or File, Open Project). If Bambu Studio asks
-   whether to load the project's settings or presets, answer **yes**. If it says the file
-   is "not from Bambu Lab, load geometry only", the file is not ours: stop and check.
+1. **Open** the `.3mf` from Bambu Studio with **File, Open Project**, never with a
+   double click: if another slicer is installed (QIDI Studio, OrcaSlicer, ...), the
+   computer may open the file there, and saving it there rewrites it for another printer
+   (incident 2026-11-12: Bambu Studio then crashed on Print). The printer at the top left
+   must read **Bambu Lab X2D**; otherwise close without saving and rebuild. If Bambu
+   Studio asks whether to load the project's settings or presets, answer **yes**. If it
+   says the file is "not from Bambu Lab, load geometry only", the file is not ours: stop
+   and check.
 2. **Check the colours:** the filament list on the left shows the colours; each part in
    the Objects list shows its filament number. Press Sync if the AMS changed. The colour
    of each part on the plate must be the one you planned.

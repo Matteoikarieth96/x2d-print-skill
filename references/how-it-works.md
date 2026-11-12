@@ -51,6 +51,15 @@ row does not fit, the build stops and says so: split the job into plates.
 
 ## The check
 
+Before anything else, `check` (like `templates` and `build` for a template) reads which
+program last saved the file (`Application` in `3D/3dmodel.model`) and its
+`printer_model`. Bambu Studio's forks (QIDI Studio, OrcaSlicer and others) open the same
+`.3mf` and, on save, write their own name and convert it to their own printer; Bambu
+Studio still slices such a file but can crash when sending it. Anything other than
+`BambuStudio-<version>` and `Bambu Lab X2D` is refused with the fix: rebuild with
+`build --force`, open from Bambu Studio with File, Open project. `studio` lists such
+slicers when they are installed, since a double click may open the file in one of them.
+
 `--check` (or `check FILE.3mf`) copies the project into a temporary folder and runs
 `BambuStudio --slice 1 --outputdir ...`. From `result.json` it takes grams per filament
 (model and total, the difference is purge and prime tower) and the number of changes;

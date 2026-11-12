@@ -65,6 +65,19 @@ TEMP_MARGIN_C = 10      # bed and chamber may be this much above the official va
 CHECK_ENTRIES = ("3D/3dmodel.model", "3D/Objects/object_1.model", "Metadata/model_settings.config",
                  SETTINGS_ENTRY, "Metadata/slice_info.config", "[Content_Types].xml", "_rels/.rels",
                  "3D/_rels/3dmodel.model.rels")
+# The only printer this skill builds for, as Bambu Studio writes it in printer_model.
+X2D_MODEL = "Bambu Lab X2D"
+MODEL_ENTRY = "3D/3dmodel.model"
+_APP_RE = re.compile(r'<metadata\s+name="Application"\s*>([^<]*)</metadata>')
+TEMPLATE_FIX = ("Do not use it as a template: in Bambu Studio select the Bambu Lab X2D and "
+                "save a new template with File, Save Project As.")
+PROJECT_FIX = ("Do not print it: build it again from its job with `build JOB.json --force` "
+               "and open the new file from Bambu Studio with File, Open project, never with "
+               "a double click.")
+# Other slicers that open .3mf files and rewrite them for their own printers. Matched
+# against application names, lower case, letters only. Bambu Studio itself is skipped.
+OTHER_SLICERS = ("qidistudio", "orcaslicer", "elegooslicer", "crealityprint", "anycubicslicer",
+                 "snapmakerorca", "prusa", "superslicer", "ultimakercura")
 
 
 class UserError(Exception):
@@ -304,6 +317,37 @@ def _read_entry(z: zipfile.ZipFile, name: str) -> bytes:
     return z.read(name)
 
 
+def project_origin(z: zipfile.ZipFile, settings: dict) -> dict:
+    """Which program last saved a project, and for which printer.
+
+    Bambu Studio writes `BambuStudio-<version>` in the Application metadata of
+    3D/3dmodel.model. Its forks (QIDI Studio, OrcaSlicer, ...) open the same files and,
+    when saving, write their own name and convert the project to their own printer."""
+    app = None
+    if MODEL_ENTRY in z.namelist():
+        m = _APP_RE.search(_read_entry(z, MODEL_ENTRY).decode("utf-8", "replace"))
+        app = m.group(1).strip() if m else None
+    model = settings.get("printer_model")
+    return {"application": app, "printer_model": model if isinstance(model, str) else None}
+
+
+def origin_problem(path: pathlib.Path, origin: dict, fix: str) -> str | None:
+    """Why a project was not saved by Bambu Studio for the X2D, or None if it was."""
+    app, model = origin["application"], origin["printer_model"]
+    if app and app.startswith("BambuStudio-") and model == X2D_MODEL:
+        return None
+    if app and not app.startswith("BambuStudio-"):
+        why = (f"{path.name} was rewritten by another slicer ({app}, printer "
+               f"{model or 'unknown'}), probably opened with a double click. Bambu Studio "
+               "may crash on it or print with the wrong printer's settings.")
+    elif not app:
+        why = f"{path.name} was not saved by Bambu Studio (no Application metadata)."
+    else:
+        why = (f"{path.name} is set up for {model or 'an unknown printer'}, not the "
+               f"{X2D_MODEL}.")
+    return why + " " + fix
+
+
 def read_template(path: pathlib.Path) -> dict:
     """Read only the settings of a Bambu Studio project. Geometry is ignored."""
     if not zipfile.is_zipfile(path):
@@ -312,8 +356,11 @@ def read_template(path: pathlib.Path) -> dict:
         if SETTINGS_ENTRY not in z.namelist():
             raise UserError(f"{path} has no Bambu Studio settings: save it from Bambu Studio")
         settings = json.loads(_read_entry(z, SETTINGS_ENTRY).decode("utf-8"))
-    if not isinstance(settings, dict) or "printer_settings_id" not in settings:
-        raise UserError(f"{path}: settings are not from Bambu Studio")
+        if not isinstance(settings, dict) or "printer_settings_id" not in settings:
+            raise UserError(f"{path}: settings are not from Bambu Studio")
+        problem = origin_problem(path, project_origin(z, settings), TEMPLATE_FIX)
+    if problem:
+        raise UserError(problem)
     return settings
 
 
@@ -730,8 +777,11 @@ def check_project(path: pathlib.Path, paths: dict) -> dict:
         if SETTINGS_ENTRY not in z.namelist():
             raise UserError(f"{path} has no Bambu Studio settings")
         settings = json.loads(_read_entry(z, SETTINGS_ENTRY).decode("utf-8"))
-    if not isinstance(settings, dict) or "printer_settings_id" not in settings:
-        raise UserError(f"{path}: settings are not from Bambu Studio")
+        if not isinstance(settings, dict) or "printer_settings_id" not in settings:
+            raise UserError(f"{path}: settings are not from Bambu Studio")
+        problem = origin_problem(path, project_origin(z, settings), PROJECT_FIX)
+    if problem:
+        raise UserError(problem)
     official = official_presets(paths, settings)
     flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
                                 list(settings["filament_settings_id"]))
@@ -820,8 +870,39 @@ def _print(obj):
     print(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
+def other_slicers(dirs=None) -> list:
+    """Installed slicers other than Bambu Studio that can open, and rewrite, a .3mf."""
+    if dirs is None:
+        system = platform.system()
+        if system == "Darwin":
+            dirs = [pathlib.Path("/Applications"), pathlib.Path.home() / "Applications"]
+        elif system == "Windows":
+            dirs = [pathlib.Path(os.environ.get("ProgramFiles", r"C:\Program Files"))]
+        else:
+            dirs = []
+    found = []
+    for d in dirs:
+        try:
+            entries = sorted(pathlib.Path(d).iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            key = re.sub(r"[^a-z]", "", e.name.lower())
+            if "bambu" not in key and any(s in key for s in OTHER_SLICERS):
+                found.append(e.name)
+    return found
+
+
 def cmd_studio(a):
-    _print(studio_paths(a.studio))
+    out = dict(studio_paths(a.studio))
+    others = other_slicers()
+    out["other_slicers"] = others
+    if others:
+        out["warning"] = ("Other slicers are installed (" + ", ".join(others) + "). A double "
+                          "click on a .3mf may open it in one of them, which rewrites it for "
+                          "another printer; Bambu Studio can then crash on Print. Open projects "
+                          "from Bambu Studio with File, Open project.")
+    _print(out)
 
 
 def cmd_templates(a):

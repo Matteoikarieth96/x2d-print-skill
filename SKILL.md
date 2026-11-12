@@ -56,6 +56,9 @@ its profiles are. If anything is `null`, or the person has never connected the p
 follow [references/setup.md](references/setup.md) with them, one step at a time: install
 from the official sites only, first-run wizard, the connection choice (account, LAN only,
 or USB stick), and the first checks. Wait for each "done" before the next step.
+If it prints a `warning` about other slicers (QIDI Studio, OrcaSlicer, ...), tell the
+person now: the project must be opened from Bambu Studio with File, Open project, never
+with a double click, or that other program may open and rewrite it for its own printer.
 
 ## Step 3: the settings template (once per AMS change)
 
@@ -136,5 +139,11 @@ press Print in Bambu Studio themselves, and stay by the printer for the first la
   setting from the job, or ask the person to save a new template as in Step 3.
 - "already exists": add `--force` only if that file is the output of an earlier build of
   this job; otherwise pick another `output` name.
+- "rewritten by another slicer" or "not the Bambu Lab X2D", or Bambu Studio shows
+  another printer at the top left or crashes on Print: the `.3mf` was opened (usually by
+  a double click) and saved in another slicer, which converted it to its own printer. Do
+  not print it. Rebuild with `build job.json --force --check` and have the person open
+  the new file from Bambu Studio with File, Open project. For a template, save a new one
+  as in Step 3.
 
 How the script works and why: [references/how-it-works.md](references/how-it-works.md).

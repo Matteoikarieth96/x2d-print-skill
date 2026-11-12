@@ -25,8 +25,13 @@ which {{PURGE_GRAMS}} g is purge, **{{CHANGES}} colour changes**.
 
 1. **Spools.** Check the AMS and the external holder hold the colours in the table, each
    in the right place.
-2. **Open the project.** Double click `{{FILE_3MF}}` (or File, Open Project). If Bambu
-   Studio asks whether to load the project's settings too, answer **yes**.
+2. **Open the project from Bambu Studio.** Start Bambu Studio, then **File, Open Project**
+   and pick `{{FILE_3MF}}`. Never double-click the file: if another slicer is installed
+   (QIDI Studio, OrcaSlicer and others), the computer may open it there, and that program
+   rewrites it for its own printer. If Bambu Studio asks whether to load the project's
+   settings too, answer **yes**. The printer at the top left must read **Bambu Lab X2D**;
+   if it shows another printer, close the project **without saving** and have the file
+   built again.
 3. **Check the colours.** In the left column press the **sync** icon next to the
    filaments: the list takes the real AMS colours. Look at the part on the plate: each
    part must have the colour in the table. If one is wrong, select it in the Objects list
