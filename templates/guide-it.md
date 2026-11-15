@@ -54,10 +54,52 @@ filamento, di cui {{GRAMMI_SPURGO}} g di spurgo, **{{CAMBI}} cambi colore**.
    della stampante, usa invece la freccia accanto a **Stampa piatto**, poi **Invia**
    (Send): il file arriva nella memoria della stampante senza partire, e lo avvii dallo
    schermo, controllando lì i colori.
-9. **Resta davanti alla stampante per il primo strato** (5-10 minuti). Se il filo non
+9. **Resta davanti alla stampante per il primo strato** (5-10 minuti, vedi sotto). Se il filo non
    attacca o l'ugello trascina, ferma la stampa dallo schermo o dalla scheda Device.
 10. **A fine stampa** aspetta che il piatto sia freddo, toglilo, flettilo piano e il pezzo
    si stacca. Togli torre di spurgo e linea di spurgo, rimetti il piatto contro i suoi
    fermi.
+
+## Cosa vedrai
+
+- **Per un po' sembra non succedere niente.** Prima della prima linea la X2D scalda
+  piatto e ugelli, pulisce l'ugello, misura il piatto (livellamento) e fa le sue
+  calibrazioni. Spesso ci vogliono 5-15 minuti ed è normale. Il tempo scritto sopra li
+  comprende.
+- **Una linea sottile sul bordo davanti del piatto:** è la linea di spurgo, che prepara
+  l'ugello. Le piccole palline di plastica che cadono dietro sono gli spurghi tra un
+  colore e l'altro.
+- **Un buon primo strato** è piatto e un po' schiacciato: le linee si toccano senza
+  buchi, restano attaccate al piatto e gli angoli non si alzano. **Uno cattivo** ha fili
+  tondi e staccati, buchi tra le linee, plastica che si arriccia o si accumula
+  sull'ugello, linee che vengono trascinate dall'ugello. In quel caso ferma (sotto).
+- **Una piccola torre quadrata** accanto al pezzo è la torre di spurgo: con più colori
+  c'è apposta.
+
+## Se qualcosa va storto
+
+1. **Ferma** la stampa dallo schermo della stampante (o dalla scheda Device di Bambu
+   Studio).
+2. **Leggi lo schermo.** Se compare un errore con un codice, scrivilo e cercalo sulla
+   wiki di Bambu Lab (wiki.bambulab.com); spesso lo schermo mostra un link o un QR code
+   alla pagina giusta.
+3. **Lascia raffreddare** finché il piatto è a temperatura ambiente. Non toccare
+   l'ugello.
+4. **Libera il piatto:** toglilo e stacca tutta la plastica. Mai raschiare vicino alle
+   dita.
+5. **Lava il piatto** con acqua tiepida e sapone per i piatti, sciacqua, asciuga e non
+   toccare più la superficie di stampa con le dita. Rimettilo contro i suoi fermi.
+6. **Controlla il tipo di piatto:** quello scelto in Bambu Studio deve essere quello
+   montato in macchina.
+7. Riprova. Se fallisce due volte allo stesso modo, chiedi aiuto prima del terzo
+   tentativo.
+
+## Parole che incontrerai
+
+- **Affettare (slice):** trasformare il modello 3D nelle istruzioni per la stampante (strati e movimenti).
+- **Spurgo e torre di spurgo:** plastica spinta fuori per pulire l'ugello quando cambia colore; la torre accanto al pezzo ne raccoglie una parte.
+- **AMS:** la scatola che tiene fino a quattro bobine e le porta da sola all'ugello sinistro.
+- **Bobina esterna, Bowden:** una bobina sul supporto fuori dall'AMS; arriva all'ugello destro attraverso un tubo lungo (Bowden).
+- **Pareti e riempimento:** le pareti sono i gusci pieni esterni del pezzo; il riempimento (infill) è la griglia leggera dentro.
 
 Mai lasciare la stampante a lavorare da sola per ore, e mai di notte con l'edificio vuoto.

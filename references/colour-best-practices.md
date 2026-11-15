@@ -91,6 +91,7 @@ re-calculate option.
 | Advice | Meaning | Usual fix |
 |---|---|---|
 | swaps on the same nozzle in N of M layers | colours alternate through much of the height | move the dominant colour to the other nozzle, keep accents in few layers, or split plates |
+| all colours use one nozzle, put the main colour on the other | given only with swaps in many layers (rule 3); colours that change only by height stay on the left nozzle (rule 2) | dominant colour on the external spool and the right nozzle |
 | purge more than the part | normal on small parts | fewer colours or colour layers, or several copies per plate |
 | several objects share the plate | objects make each other change colour | one plate (one 3MF) per object group |
 | different materials | poor bonding | one material |
@@ -111,5 +112,5 @@ re-calculate option.
 - Flushing volumes guide: https://www.3dprofilefix.com/guides/flushing-volumes-guide.html
 - X2D Bambu Studio settings: https://printer-hub.ru/posts/bambu-lab-x2d-bambu-studio-settings
 - Forum, flushing volume calibration: https://forum.bambulab.com/t/ams-flushing-volumes-calibration-purge-reduction/37062
-- Bambu Studio issues on automatic grouping with two nozzles (why the script uses Manual mode; both still open in Bambu Studio 02.09.01.70, November 2026): https://github.com/bambulab/BambuStudio/issues/13020 and https://github.com/bambulab/BambuStudio/issues/12915
+- Bambu Studio issues on automatic grouping with two nozzles (why the script uses Custom Mode, `filament_map_mode` `Manual`; both still open in Bambu Studio 02.09.01.70, November 2026): https://github.com/bambulab/BambuStudio/issues/13020 and https://github.com/bambulab/BambuStudio/issues/12915
 - Bambu Studio source for the layer slider's "Change Filament" and the X2D's per-nozzle printable area: https://github.com/bambulab/BambuStudio (`src/slic3r/GUI/IMSlider.cpp`, `resources/profiles/BBL/machine/Bambu Lab X2D 0.4 nozzle.json`)

@@ -70,14 +70,29 @@ fails and the account route works, use the account route and check the release n
 3. Stick into the printer's USB port, pick the file on the touchscreen, check the colours
    it shows, start.
 
-## 3. Sync the AMS colours
+## 3. Load the spools and sync the colours
 
-1. Spools in the AMS (each in its slot, the end of the filament pushed in until the AMS
-   pulls it), the external spool on its holder if used.
-2. If spools have no Bambu RFID tag, set each slot's material and colour on the printer
-   screen (or in the Device tab, by clicking the slot).
-3. In Bambu Studio, Prepare tab, filament list: press the **Sync** icon. The list now
-   matches the AMS. This list is what the template captures (SKILL.md Step 3).
+The full click path, with what appears after each click, is in SKILL.md Step 3 (3a
+which colour goes where and how to load the external spool, 3b the template). In short:
+
+1. **Plan first:** with a job from 3d-print-design, `design.suggested_nozzles` says
+   which colour prints on the right nozzle. In the usual Combo setup that colour goes on
+   the **external spool holder** and every other colour in the **AMS**.
+2. **Load:** AMS spools in their slots, the end of the filament pushed in until the AMS
+   pulls it. External spool: end pushed into the right nozzle's feed tube, then on the
+   touchscreen the filament screen, the external slot (Ext), edit, material and colour,
+   **Load**. A spool without a Bambu RFID tag, or any spool on the external holder,
+   needs its material and colour set by hand on that screen (or in Bambu Studio's
+   Device tab by clicking the slot).
+3. **Check the connection:** Bambu Studio's **Device** tab shows the X2D and its AMS.
+   **Sync only works when it does.**
+4. **Sync:** Prepare tab, Filament section, the **Sync** icon next to the word Filament,
+   confirm the window. The list now has one numbered row per loaded spool, with its
+   colour and material. This list is what the template captures. It does not record
+   which AMS slot each row came from: note it while syncing.
+5. **No connection?** Add the rows by hand: **+** (Add Filament) once per spool, then
+   for each row the colour square (pick the colour) and the drop-down (a system preset
+   ending in `@BBL X2D`, such as `Generic PLA @BBL X2D`). Remove extra rows with **-**.
 
 ## 4. Opening the project and printing
 

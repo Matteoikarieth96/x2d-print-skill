@@ -43,17 +43,20 @@ Ask only what is missing, at most one round, with `AskUserQuestion` when availab
    Bambu Studio's paint tool by hand). Exception: if its colours change only by height
    (each layer one colour), no split is needed. The person opens it in Bambu Studio and,
    in Preview, right-clicks the layer slider at each new colour's first layer, **Change
-   Filament**. The script does not build that case, so guide them by hand. If the STLs come from the **3d-print-design**
-   skill, an `x2d-job.json` sits next to them: read it first. It already says which STL
-   is which colour, the material, how many layers each colour spans and which nozzle
-   suits each part, so ask only what it leaves open.
+   Filament**. The script does not build that case, so guide them by hand. If the STLs
+   come from the **3d-print-design** skill, an `x2d-job.json` sits next to them: read it
+   first (format 1 or 2, see Step 4). It already says which STL is which colour, the
+   material, the layer height, which nozzle suits each colour and, in format 2, the
+   print settings, an estimate and maybe other versions to compare. Ask only what it
+   leaves open.
 2. **Experience:** first print ever, a few prints, or experienced. First-timers get the
    full guide and the safety section; experienced people get the short version.
 3. **Is Bambu Studio installed and is the printer already linked** to it (Device tab
    shows the X2D)? If not, Step 2 starts from scratch.
 4. **What is loaded in the printer:** which colours in which AMS slots, and the spool on
-   the external holder if any. Step 3 reads this from the template, so ask only if they
-   cannot save a template yet.
+   the external holder if any. The template (Step 3) records colours and materials but
+   **not** which slot holds each one, so write down what the person says: the guide's
+   "Where it is loaded" column comes only from them.
 
 ## Step 2: Bambu Studio installed and connected
 
@@ -66,34 +69,110 @@ If it prints a `warning` about other slicers (QIDI Studio, OrcaSlicer, ...), tel
 person now: the project must be opened from Bambu Studio with File, Open project, never
 with a double click, or that other program may open and rewrite it for its own printer.
 
-## Step 3: the settings template (once per AMS change)
+## Step 3: load the spools, then save the settings template (once per AMS change)
 
 The project's settings come from a `.3mf` that the person's own Bambu Studio saved, so it
-carries their printer, plate and real AMS colours. Ask them to:
+carries their printer, plate and real AMS colours. The spools must be in place **before**
+it is saved, so plan them first.
 
-1. In Bambu Studio, **Prepare** tab: printer **Bambu Lab X2D**, nozzle **0.4**, the
-   **plate type** that is really on the printer (the X2D ships with the Textured PEI
-   Plate), process **0.20mm Standard @BBL X2D**.
-2. Click **Sync** (the AMS/sync icon next to the filament list): the filament list now
-   shows the colours actually loaded. Check the external spool is listed if they use one.
-3. Add any shape (right click on the plate, Add Primitive, Cube) and save with
-   **File, Save Project As**, for example `x2d-template.3mf`. The shape is ignored.
+### 3a. Which colour goes where
+
+Read `design.suggested_nozzles` in `x2d-job.json` (without one, apply
+[references/colour-best-practices.md](references/colour-best-practices.md) yourself):
+- **Format 2** keys it by **colour name** (`{"black": "right", "yellow": "left"}`).
+  **Format 1** keys it by **STL name** (`{"coaster-base.stl": "right"}`): look up that
+  STL's `colour` in `objects`.
+- In the usual X2D Combo setup the AMS feeds the left nozzle and the **external spool
+  holder** feeds the right one. So a colour marked `right` goes on the external holder,
+  every `left` colour goes in an AMS slot. All `left` (one colour, colours by height, or
+  TPU): nothing goes on the external holder.
+- An AMS can also feed the right nozzle (a second AMS, or Bambu's filament track
+  switch): then ask which nozzle each AMS slot feeds and plan from that.
+
+Tell the person in one or two sentences, for example: "Put the black spool on the
+external holder (it prints with the right nozzle) and the yellow one in the AMS (left
+nozzle). Black runs through every layer, so on its own nozzle it needs no purge."
+
+Loading the external spool, on the printer's touchscreen (labels can differ a little
+between firmware versions; if one differs, look for the external spool on the filament
+screen):
+1. Hang the spool on the external holder so the filament unwinds without catching, and
+   push its end into the feed tube for the **right** nozzle until it stops.
+2. On the home screen, tap the **filament** icon (a spool). The screen shows the AMS
+   slots and the external spool (marked **Ext**, for the right nozzle **Ext-R**).
+3. Tap the external spool, then the **edit** button (pencil). Pick the **material**
+   (the design's, for example PLA; Bambu PLA Basic or Generic PLA) and the **colour**,
+   and confirm. A Bambu spool with an RFID tag is read on its own only in the AMS; on the
+   external holder, set it by hand.
+4. Tap **Load**. The right nozzle heats up and pulls the filament in; a short piece of
+   plastic comes out at the back. Wait until the screen shows the external spool with
+   its colour.
+5. Spools in the AMS: each in its slot, filament end pushed in until the AMS pulls it.
+   Bambu spools are read from their tag; for others, tap the slot on the same screen,
+   edit, and set material and colour the same way.
+
+The same settings can be made in Bambu Studio's **Device** tab by clicking a slot.
+
+### 3b. Save the template, click by click
+
+Say each click and what the person should see, and wait for "done":
+1. Open Bambu Studio. **Device** tab (top bar): the X2D shows with its temperatures and
+   the AMS with the colours just loaded. If it is not there, Sync cannot work: connect it
+   first ([references/setup.md](references/setup.md)) or use the no-Sync way below.
+2. **Prepare** tab. Left column, top: the printer box must read **Bambu Lab X2D 0.4
+   nozzle**. If not, click it and pick that printer: the plate in the middle becomes the
+   X2D's square plate.
+3. Under the printer, the **plate type** box: pick the plate really on the printer (the
+   X2D ships with the Textured PEI Plate).
+4. **Process** box: **0.20mm Standard @BBL X2D**.
+5. **Filament** section: click the **Sync** icon next to the word Filament. A window
+   shows the printer's spools; confirm it. After it closes, the filament list has one
+   numbered row per loaded spool (1, 2, 3...), each with its colour square and material.
+   Check every loaded colour is there, the external spool included.
+6. Right-click an empty spot of the plate, **Add Primitive**, **Cube**: a cube appears.
+   It only lets the file be saved; the script ignores it.
+7. **File**, **Save Project As**, name it `x2d-template.3mf`, **Save**. The window title
+   now shows that name.
+
+**No-Sync way** (printer not connected, or Sync greyed out): in the Filament section
+click **+** (Add Filament) until there is one row per spool you will use. For each row,
+click the colour square and pick the spool's colour, then open the drop-down and pick a
+**system** preset of the right material ending in `@BBL X2D` (for example `Bambu PLA
+Basic @BBL X2D` or `Generic PLA @BBL X2D`), never one under "User presets". Remove extra
+rows with **-**. Then steps 6 and 7. Remember which row is which spool: Bambu Studio
+does not know it.
 
 Then run `python3 "$SKILL/scripts/bambu_project.py" templates PATH` with the file they
 just saved. Without a path it lists Bambu Studio's recent projects: use one only if the
 person confirms they saved it as their template, never a downloaded model. Show the
 person the filament table it prints (number, colour, type) and confirm it matches the
-printer. Refuse templates that use custom or user presets: the
-script will say so; the fix is to pick the system presets and save again.
+printer. `where_loaded` is always unknown: the slot comes from the person (Step 1).
+A row with `warning` "a project built by x2d-print, not a clean template" is one of this
+skill's own outputs: it still works, but it carries an earlier job's settings, so prefer
+a fresh template. Refuse templates that use custom or user presets: the script will say
+so; the fix is to pick the system presets and save again.
 
 ## Step 4: the job file
 
-If an `x2d-job.json` from 3d-print-design is next to the STLs, fill that file instead
-of copying the example: set `template`; give each part the number of the template
-filament whose colour matches its `colour` / `colour_hex` (ask when none matches or two
-match); set `nozzles` for those numbers following `design.suggested_nozzles`; check that
-the template's filaments are the `design.material`. The script ignores the `design` block
-and refuses the job while a `filament` is still empty.
+**From 3d-print-design:** fill `x2d-job.json` **in place**, do not copy it. The design
+skill keeps `template`, each part's `filament` and `nozzles` when it rebuilds the design
+with the same colours (it resets them, and says so, when parts or colours changed), so
+filling it once is enough.
+- `template`: the path of the file saved in Step 3b.
+- Each part's `filament`: the number of the template filament whose colour matches the
+  part's `colour` / `colour_hex` (ask when none matches or two match).
+- `nozzles`: for each of those **filament numbers**, `left` or `right`, from
+  `design.suggested_nozzles`: colour (format 2) or STL (format 1) to filament number to
+  nozzle. Keys are numbers as strings (`"5": "right"`); STL or colour names are refused.
+- `settings`: in format 2 it already holds the design's choices (walls, infill, layer
+  height, supports) as Bambu Studio strings. Leave them: the estimate is for them.
+- `variants` (format 2, optional): other versions of the same design. Leave them.
+- Check that the template's filaments are the `design.material`. The build also warns
+  when the template's layer height, material or nozzle differ from the design, or when
+  `nozzles` goes against `design.suggested_nozzles`.
+
+The script ignores the rest of the `design` block and refuses the job while a
+`filament` is still empty.
 
 Otherwise copy [templates/job.example.json](templates/job.example.json) next to the STLs and fill it:
 - `objects`: one per physical object; `parts`: one per STL, with `filament` = the number
@@ -104,9 +183,13 @@ Otherwise copy [templates/job.example.json](templates/job.example.json) next to 
   usual Combo setup, one AMS on the left nozzle, filaments in the AMS go `left` and the
   external spool goes `right`. An AMS can also feed the right nozzle (a second AMS, or
   Bambu's filament track switch): then ask which nozzle each AMS slot feeds.
-- `settings` (optional): process overrides such as `wall_loops`, `sparse_infill_density`,
-  `enable_support`. Values are strings, as in Bambu Studio. G-code fields are refused, and
-  so are printer limits, motion and temperature changes beyond the official presets.
+- `settings` (optional): process overrides such as `wall_loops`, `sparse_infill_density`
+  (a percentage, `"15%"`), `layer_height`, `enable_support`. Values are strings, as in
+  Bambu Studio, shaped like the template's. Refused: G-code fields, the keys that name
+  the printer, presets or filaments (`*_settings_id`, `inherits`, `printer_model`,
+  `version`, `compatible_*`, `filament_type`, `filament_colour`, ...), `filament_map`
+  (use `nozzles`), and printer limits, motion and temperature changes beyond the official
+  presets.
 
 Before building, apply [references/colour-best-practices.md](references/colour-best-practices.md):
 colours by height on the left nozzle when each layer holds one colour, otherwise the
@@ -121,21 +204,68 @@ python3 "$SKILL/scripts/bambu_project.py" build job.json --check
 ```
 
 `build` writes the `.3mf` inside the job's folder (it refuses paths outside it and will
-not replace an existing file: add `--force` when you rebuild your own output);
-`--check` slices it with the local Bambu Studio in a temporary
-folder (nothing is sent anywhere) and reports time, filament changes per layer, grams per
-colour (model and purge) and `advice`. Read every advice line. Change the job (nozzles,
-plates, settings) and rebuild until the advice is acceptable; say which ones you accepted
-and why. If the object does not fit the plate, the script says so.
+not replace an existing file: add `--force` when you rebuild your own output).
+`--check` slices it with the local Bambu Studio in a temporary folder (nothing is sent
+anywhere). The project is written to a temporary file first and moved into place only
+when the check passes: a failed check leaves no new file (and an older one untouched),
+and the error names the job settings that differ from the template, since one of them
+may be the cause. Read every line of `warnings`, `check.advice` and
+`check.studio_warnings` (Bambu Studio's own warnings). Change the job (nozzles, plates,
+settings) and rebuild until they are acceptable; say which ones you accepted and why. If
+the object does not fit the plate, the script says so.
+
+What `check` reports: `estimated_time` (Bambu Studio's text, such as `38m 12s`) and
+`time_s`; `filament_changes`; `model_g`, `waste_g` (purge) and `total_g`; `metres` and
+`cost` (the template's `filament_cost` per kg times the grams, in the currency set in
+Bambu Studio); per filament the same plus `nozzle` and `length_m`; `flush_time_s` and
+`prime_tower_time_s`; same-nozzle swaps and nozzle switches per layer. **Purge** here is
+flush plus prime tower together; Bambu Studio's Preview panel shows them apart
+("Flushed" and "Tower"), so tell the person their sum is the guide's purge.
+
+### Versions to compare (`variants`)
+
+If the job has `variants`, a plain build says so in `warnings`. Build them all with:
+
+```
+python3 "$SKILL/scripts/bambu_project.py" build x2d-job.json --variants --check
+```
+
+It writes the chosen version (the job's top level) as `output`, and each variant as
+`<output name>-<variant>.3mf` beside it: the variant's `settings` on top of the job's,
+its `stl` replacements, the same filament numbers and nozzles. They are sliced one after
+another. The JSON gets `comparison` and `table` (also printed as plain text): per
+version the time, model, purge and total grams, metres, cost, colour changes, and the
+design's estimate with the drift in % (grams against total grams; minutes against the
+estimated range, `in range` when inside). A variant that fails to slice is listed in
+`failed_variants` with its `error` and gets no file; the others are kept.
+
+For a beginner, say it simply: "The design skill gave you three versions. Sliced for
+real: light 41 minutes and 12 g, standard 52 minutes and 16 g, strong 1 h 10 and 23 g.
+Which one?" Add one line on what differs (`about`). Then hand over only the file they
+pick (Step 6) and say the others can be deleted.
 
 ## Step 6: hand over
 
 Give the person:
 1. The path of the `.3mf`.
-2. A filled guide from `templates/guide-it.md` or `templates/guide-en.md`: the filament
-   table (number, colour, AMS slot or external, nozzle, part), the check numbers (time,
-   grams, changes), and the steps to open, check colours, slice and send. For a
-   first-timer, keep every step; for an experienced person, the table and numbers suffice.
+2. A filled guide from `templates/guide-it.md` or `templates/guide-en.md`. For a
+   first-timer keep every section; for an experienced person, the table and numbers
+   suffice. Placeholders (English name / Italian name), from the `build --check` report:
+
+   | Placeholder | Fill with |
+   |---|---|
+   | `{{NAME}}` / `{{NOME}}` | the job's `name` (or a plain name for the object) |
+   | `{{FILE_3MF}}` | `output` |
+   | `{{FILAMENT_ROWS}}` / `{{RIGHE_FILAMENTI}}` | one row per filament in `check.filaments`: number, `colour` (say the colour name), where it is loaded, `nozzle`, the parts from `objects[].parts` with that `filament` |
+   | `{{TIME}}` / `{{TEMPO}}` | `check.estimated_time` |
+   | `{{TOTAL_GRAMS}}` / `{{GRAMMI_TOTALI}}` | `check.total_g` |
+   | `{{PURGE_GRAMS}}` / `{{GRAMMI_SPURGO}}` | `check.waste_g` (flush plus prime tower) |
+   | `{{CHANGES}}` / `{{CAMBI}}` | `check.filament_changes` |
+   | `{{COLOUR_NOTES}}` / `{{NOTE_COLORI}}` | the advice and Bambu Studio warnings you kept, in plain words, and why the colours sit where they do; empty if none |
+
+   **Where it is loaded** comes only from what the person told you (Step 1 or 3a), such
+   as "AMS slot 2" or "external spool". If they did not say, write "check on the printer
+   screen": never infer a slot from the filament number.
 3. The safety points from [references/safety.md](references/safety.md) that apply.
 
 Say plainly that you did not slice it for printing or send it: they open it, slice it and
@@ -159,10 +289,18 @@ press Print in Bambu Studio themselves, and stay by the printer for the first la
   (it covers 235.5 of the 256 mm) and prints 5 mm lower. Split the job so fewer
   objects share the row, or move that colour to the left nozzle, then rebuild.
 - Parts show on the wrong nozzle after opening, or Bambu Studio has regrouped the
-  filaments: the filament grouping must stay **Custom** (manual), as the project was
-  saved. The automatic modes (Filament-Saving, Convenience) have open bugs that put two
+  filaments: the filament grouping must stay **Custom Mode**, as the project was saved
+  (Bambu Studio 02.09 shows Filament-Saving Mode, Convenience Mode and Custom Mode; the
+  project file stores Custom as `filament_map_mode` `Manual`). The automatic modes
+  (Filament-Saving, Convenience) have open bugs that put two
   filaments on the right nozzle (Bambu Studio issues #12915 and #13020, still open in
-  02.09.01.70). Set it back to Custom with each filament on the nozzle in the guide.
+  02.09.01.70). Set it back to Custom Mode with each filament on the nozzle in the guide.
+- "nozzles: ... is not a filament number": the `nozzles` keys must be the template's
+  filament numbers (`"1"`, `"5"`), not STL or colour names. Map them as in Step 4.
+- "'filament' is still empty": a part of `x2d-job.json` still has `null`; set it to the
+  template filament number with that colour.
+- The check fails after a job setting change: the error lists the settings that differ
+  from the template. Remove the one you suspect and build again.
 - "already exists": add `--force` only if that file is the output of an earlier build of
   this job; otherwise pick another `output` name.
 - "rewritten by another slicer" or "not the Bambu Lab X2D", or Bambu Studio shows

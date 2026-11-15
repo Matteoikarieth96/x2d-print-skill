@@ -1,0 +1,37 @@
+{
+    "error_string": "Success.",
+    "layer_height": 0.20000000298023224,
+    "plate_index": 1,
+    "return_code": 0,
+    "sliced_plates": [
+        {
+            "feature_type_times": {
+                "Bottom surface": 165.90191650390625,
+                "Custom": 287.53851318359375,
+                "Flush": 400.685791015625,
+                "Inner wall": 46.1353759765625,
+                "Outer wall": 56.67666244506836,
+                "Prime tower": 103.87467193603516,
+                "Sparse infill": 202.31541442871094,
+                "Travel": 89.08870697021484
+            },
+            "filament_change_times": 3,
+            "filaments": [
+                {"filament_id": "GFL99", "id": 1, "main_used_g": 0.8049809336662292, "total_used_g": 3.042093276977539},
+                {"filament_id": "GFL99", "id": 2, "main_used_g": 15.528338432312012, "total_used_g": 16.429344177246094}
+            ],
+            "id": 1,
+            "layer_filament_change": 0,
+            "main_predication": 1478.9005126953125,
+            "objects": [
+                {"bbox": {"depth": 20.0, "height": 3.0, "width": 40.0, "x": 108.0, "y": 118.0, "z": 0.0},
+                 "id": 1000, "name": "tag", "triangle_count": 24}
+            ],
+            "total_predication": 2292.2333984375,
+            "triangle_count": 24,
+            "warning_message": "Floating regions detected on layer 3.\nThe prime tower is close to the plate edge."
+        }
+    ],
+    "sparse_infill_density": 15.0,
+    "wall_loops": 2
+}

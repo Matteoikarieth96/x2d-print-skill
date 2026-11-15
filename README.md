@@ -21,8 +21,12 @@ group of objects that would keep swapping colours.
   another slicer is installed: see [When things go wrong](#when-things-go-wrong).
 - A short guide in your language with the filament table, the expected time and grams,
   and the steps: sync AMS colours, check, slice, send, stay for the first layer.
-- A check report: estimated time, colour changes per layer, grams of model and purge per
-  colour, and plain advice when the colour plan wastes filament.
+- A check report: estimated time, colour changes per layer, grams of model and purge
+  (flush plus prime tower) per colour, metres and cost of filament, Bambu Studio's own
+  warnings, and plain advice when the colour plan wastes filament.
+- With a job from [3d-print-design](https://github.com/Matteoikarieth96/3d-print-design-skill)
+  that lists several versions (light, standard, strong): one `.3mf` per version and a
+  table with their real time and grams next to the design's estimate, so you can pick.
 
 ## The intake questions
 
@@ -52,11 +56,15 @@ Then ask Claude Code something like "I want to print these STLs on my X2D" or
 
 ## How to use
 
-1. Save a template once: in Bambu Studio select the X2D, your plate, press Sync for the
-   AMS colours, add any shape, File, Save Project As `x2d-template.3mf`.
-2. Give Claude your STL files (one per colour) and say which colour each one is.
-3. Claude writes a `job.json`, builds and checks the project, and gives you the `.3mf`
-   and the guide.
+1. Load the spools: Claude tells you which colour goes in the AMS and which on the
+   external holder (right nozzle), and how to set the external spool on the printer
+   screen.
+2. Save a template once: in Bambu Studio select the X2D, your plate, press Sync for the
+   AMS colours (the printer must show in the Device tab; without it, add the filaments
+   by hand), add any shape, File, Save Project As `x2d-template.3mf`.
+3. Give Claude your STL files (one per colour) and say which colour each one is, or the
+   `x2d-job.json` that 3d-print-design wrote next to them (Claude fills it in place).
+4. Claude builds and checks the project, and gives you the `.3mf` and the guide.
 
 Directly, without Claude:
 
@@ -64,10 +72,15 @@ Directly, without Claude:
 python3 scripts/bambu_project.py studio              # where Bambu Studio is
 python3 scripts/bambu_project.py templates           # recent projects usable as template
 python3 scripts/bambu_project.py build job.json --check
+python3 scripts/bambu_project.py build x2d-job.json --variants --check   # every version, compared
 python3 scripts/bambu_project.py check out/name.3mf
 ```
 
-Job format: [templates/job.example.json](templates/job.example.json). Details:
+With `--check` the file is written only if it slices: a failed check leaves no new file.
+
+Job format: [templates/job.example.json](templates/job.example.json), or the
+`x2d-job.json` written by 3d-print-design (formats 1 and 2, see [SKILL.md](SKILL.md)
+Step 4). Details:
 [references/how-it-works.md](references/how-it-works.md).
 
 ## Security
@@ -80,7 +93,8 @@ Job format: [templates/job.example.json](templates/job.example.json). Details:
   printer's limits, motion settings or temperatures beyond the official presets is
   refused.
 - It writes only the `.3mf` inside the job's folder, and replaces an existing file only
-  when asked (`--force`).
+  when asked (`--force`). A job cannot change which printer, presets or filaments the
+  project is for, nor point it at a network host.
 - The only program it runs is your local Bambu Studio, to slice the project in a
   temporary folder for the check.
 

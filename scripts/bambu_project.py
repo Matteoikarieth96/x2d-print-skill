@@ -8,7 +8,8 @@ temporary folder to prove it slices and to count colour changes.
 Subcommands
   studio                 where Bambu Studio, its command line and its profiles are
   templates [PATH ...]   list settings templates (.3mf saved by Bambu Studio)
-  build JOB.json         write the project described by JOB.json
+  build JOB.json         write the project described by JOB.json (--variants: also
+                         each version listed in the job, with a comparison table)
   check FILE.3mf         slice FILE.3mf with Bambu Studio and report colour changes
 
 Run `python3 bambu_project.py <subcommand> -h` for options.
@@ -78,6 +79,28 @@ PROJECT_FIX = ("Do not print it: build it again from its job with `build JOB.jso
 # against application names, lower case, letters only. Bambu Studio itself is skipped.
 OTHER_SLICERS = ("qidistudio", "orcaslicer", "elegooslicer", "crealityprint", "anycubicslicer",
                  "snapmakerorca", "prusa", "superslicer", "ultimakercura")
+# Job and variant names: safe as file names.
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+# Job formats written by the 3d-print-design skill (format 1 keys suggested_nozzles by STL,
+# format 2 by colour name and adds settings, variants and estimates).
+JOB_FORMATS = (1, 2)
+# Zip entry that marks a project written by `build`. Bambu Studio ignores it on open and
+# drops it on save, so a project saved again from Bambu Studio no longer carries it.
+BUILT_ENTRY = "Metadata/x2d_print.json"
+BUILT_NOTE = ("{name} is a project built by x2d-print, not a clean template: its settings "
+              "carry an earlier job's choices (nozzles, walls, infill). Better: save a template "
+              "from Bambu Studio as in SKILL.md Step 3.")
+# Settings that say which printer, presets or loaded filaments a project is for. They come
+# from the template (the person's own Bambu Studio) and a job may never set them.
+IDENTITY_KEYS = frozenset((
+    "inherits", "printer_model", "printer_variant", "printer_technology", "printer_structure",
+    "version", "different_settings_to_system", "name", "from", "setting_id", "host_type",
+    "default_print_profile", "default_filament_profile", "filament_type", "filament_colour",
+    "filament_vendor", "filament_ids", "filament_map", "filament_map_mode", "filament_nozzle_map",
+    "filament_volume_map"))
+# Settings that must be a whole number.
+INT_KEYS = frozenset(("wall_loops", "top_shell_layers", "bottom_shell_layers"))
+_PERCENT = re.compile(r"-?[0-9]+(\.[0-9]+)?%")
 
 
 class UserError(Exception):
@@ -364,6 +387,17 @@ def read_template(path: pathlib.Path) -> dict:
     return settings
 
 
+def built_project_note(path: pathlib.Path) -> str | None:
+    """A warning when a .3mf was written by this script's `build` (not a clean template)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            if BUILT_ENTRY in z.namelist():
+                return BUILT_NOTE.format(name=path.name)
+    except (OSError, zipfile.BadZipFile):
+        pass
+    return None
+
+
 def describe_template(settings: dict) -> dict:
     fil = settings.get("filament_settings_id", [])
     colours = settings.get("filament_colour", [])
@@ -372,11 +406,15 @@ def describe_template(settings: dict) -> dict:
         "printer": settings.get("printer_settings_id"),
         "process": settings.get("print_settings_id"),
         "plate": settings.get("curr_bed_type"),
+        "layer_height": settings.get("layer_height"),
         "nozzles": len(settings.get("nozzle_diameter", [])) or 1,
         "filaments": [
             {"number": i + 1, "colour": (colours[i] if i < len(colours) else "?"),
              "type": (types[i] if i < len(types) else "?"), "preset": name}
             for i, name in enumerate(fil)],
+        # A template records colours and materials, not where each spool sits.
+        "where_loaded": ("unknown: the template does not record which AMS slot or external "
+                         "spool holds each filament. Ask the person."),
         "studio_version": settings.get("version"),
     }
 
@@ -469,18 +507,54 @@ def bbox(verts):
 
 # --------------------------------------------------------------------------- job
 
+def _job_name(value, what: str) -> str:
+    name = str(value if value is not None else "").strip()
+    if not NAME_RE.fullmatch(name):
+        raise UserError(f"{what}: 'name' must be 1-64 letters, digits, dots, dashes or underscores, "
+                        "starting with a letter or digit")
+    return name
+
+
+def _stl_path(base: pathlib.Path, rel, what: str) -> pathlib.Path:
+    if not isinstance(rel, str) or not rel.strip():
+        raise UserError(f"{what}: needs an 'stl' file name")
+    p = (base / rel).resolve()
+    if p.suffix.lower() != ".stl" or not p.is_file():
+        raise UserError(f"{what}: file not found or not .stl: {rel}")
+    return p
+
+
+def _settings_dict(value, what: str) -> dict:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise UserError(f"{what}: 'settings' must be an object such as {{\"wall_loops\": \"3\"}}")
+    return value
+
+
 def load_job(path: pathlib.Path) -> dict:
+    """Read a job file, format 1 or 2 (see SKILL.md Step 4), and check its shape."""
     job = json.loads(path.read_text(encoding="utf-8"))
     base = path.parent
     if not isinstance(job, dict):
         raise UserError("job: the file must hold one JSON object")
     if not isinstance(job.get("objects"), list) or not job["objects"]:
         raise UserError("job: 'objects' must be a non-empty list")
-    name = str(job.get("name", "")).strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
-        raise UserError("job: 'name' must be 1-64 letters, digits, dots, dashes or underscores")
-    job["name"] = name
+    job["name"] = _job_name(job.get("name"), "job")
     job["_base"] = base
+    job["_warnings"] = []
+    design = job.get("design")
+    if design is not None and not isinstance(design, dict):
+        raise UserError("job: 'design' must be an object")
+    fmt = (design or {}).get("format")
+    if fmt is not None and fmt not in JOB_FORMATS:
+        job["_warnings"].append(f"the job says design format {fmt!r}; this skill knows formats "
+                                f"{', '.join(str(f) for f in JOB_FORMATS)}: update x2d-print if "
+                                "something is missing")
+    job["settings"] = _settings_dict(job.get("settings"), "job")
+    if job.get("nozzles") is not None and not isinstance(job["nozzles"], dict):
+        raise UserError('job: \'nozzles\' must be an object such as {"1": "left", "2": "right"}')
+    stls = set()
     for obj in job["objects"]:
         if not isinstance(obj, dict) or not isinstance(obj.get("parts"), list) or not obj["parts"]:
             name = obj.get("name") if isinstance(obj, dict) else obj
@@ -488,21 +562,74 @@ def load_job(path: pathlib.Path) -> dict:
         for part in obj["parts"]:
             if not isinstance(part, dict) or not isinstance(part.get("stl"), str):
                 raise UserError("job: each part needs an 'stl' file name")
-            if not isinstance(part.get("filament"), int) or part["filament"] < 1:
+            fil = part.get("filament")
+            if fil is None:
+                colour = f" ({part['colour']})" if isinstance(part.get("colour"), str) else ""
+                raise UserError(f"part {part['stl']!r}{colour}: 'filament' is still empty. Set it to "
+                                "the number of the template filament with that colour (see `templates`).")
+            if not isinstance(fil, int) or isinstance(fil, bool) or fil < 1:
                 raise UserError(f"part {part.get('stl')!r}: 'filament' must be a number from 1")
-            p = (base / part["stl"]).resolve()
-            if p.suffix.lower() != ".stl" or not p.is_file():
-                raise UserError(f"part file not found or not .stl: {part['stl']}")
-            part["_path"] = p
+            part["_path"] = _stl_path(base, part["stl"], f"part {part['stl']!r}")
+            stls.add(part["stl"])
+    variants = job.get("variants")
+    if variants is None:
+        variants = []
+    if not isinstance(variants, list):
+        raise UserError("job: 'variants' must be a list")
+    seen = set()
+    for v in variants:
+        if not isinstance(v, dict):
+            raise UserError("job: each variant must be an object with a 'name'")
+        v["name"] = _job_name(v.get("name"), "variant")
+        if v["name"] in seen:
+            raise UserError(f"variant {v['name']!r} is listed twice: variant names must differ")
+        seen.add(v["name"])
+        what = f"variant {v['name']!r}"
+        v["settings"] = _settings_dict(v.get("settings"), what)
+        repl = v.get("stl") or {}
+        if not isinstance(repl, dict):
+            raise UserError(f"{what}: 'stl' must map a job STL to its replacement")
+        v["_stl_paths"] = {}
+        for old, new in repl.items():
+            if old not in stls:
+                raise UserError(f"{what}: 'stl' replaces {old!r}, which no part of the job uses")
+            v["_stl_paths"][old] = _stl_path(base, new, what)
+        if v.get("estimate") is not None and not isinstance(v["estimate"], dict):
+            raise UserError(f"{what}: 'estimate' must be an object")
+    job["variants"] = variants
     return job
 
 
+def variant_job(job: dict, v: dict) -> dict:
+    """The job for one variant: its settings on top of the job's, its STL replacements,
+    the same filament numbers and nozzles."""
+    vj = dict(job)
+    vj["name"] = f"{job['name']}-{v['name']}"
+    vj["settings"] = {**job.get("settings", {}), **v.get("settings", {})}
+    vj["objects"] = [dict(o, parts=[dict(p, _path=v["_stl_paths"].get(p["stl"], p["_path"]))
+                                    for p in o["parts"]]) for o in job["objects"]]
+    return vj
+
+
 def nozzle_map(job: dict, settings: dict) -> list | None:
-    """Per-filament nozzle ('1' left, '2' right) for dual-nozzle printers, else None."""
+    """Per-filament nozzle ('1' left, '2' right) for dual-nozzle printers, else None.
+
+    The job's `nozzles` keys are template filament numbers ("1".."N") and the values
+    "left" or "right"; anything else is refused, never silently ignored."""
     n_fil = len(settings.get("filament_settings_id", []))
+    spec = job.get("nozzles") or {}
+    if not isinstance(spec, dict):
+        raise UserError('nozzles: must be an object such as {"1": "left", "2": "right"}')
+    bad = [k for k in spec if k not in {str(i + 1) for i in range(n_fil)}]
+    if bad:
+        raise UserError(f"nozzles: {', '.join(repr(k) for k in bad[:5])} is not a filament number. "
+                        f"The keys are the template's filament numbers as strings, \"1\" to "
+                        f"\"{n_fil}\", not STL or colour names (those go in design.suggested_nozzles).")
+    for k, v in spec.items():
+        if not isinstance(v, str) or v.strip().lower() not in ("left", "right"):
+            raise UserError(f"nozzles: filament {k} is {json.dumps(v)[:30]}: use \"left\" or \"right\"")
     if len(settings.get("nozzle_diameter", [])) < 2:
         return None
-    spec = job.get("nozzles") or {}
     names = {"left": "1", "right": "2", "1": "1", "2": "2"}
     current = list(settings.get("filament_map") or [])
     out = []
@@ -510,10 +637,110 @@ def nozzle_map(job: dict, settings: dict) -> list | None:
         v = spec.get(str(i + 1))
         if v is None:
             v = current[i] if i < len(current) else "1"
-        v = names.get(str(v).lower())
+        v = names.get(str(v).strip().lower())
         if v is None:
-            raise UserError(f"nozzles: filament {i + 1} must be 'left' or 'right'")
+            raise UserError(f"the template's filament_map for filament {i + 1} is not left or right")
         out.append(v)
+    return out
+
+
+def _value_shape_problem(k: str, v, current) -> str | None:
+    """Why a job value does not look like the template's value, or None."""
+    if isinstance(current, list):
+        if len(v) != len(current):
+            return f"'{k}' must have {len(current)} values, like {json.dumps(current)[:40]}"
+        for x, c in zip(v, current):
+            if not isinstance(x, str):
+                return f"'{k}' values must be strings, like {json.dumps(current)[:40]}"
+            why = _value_shape_problem(k, x, c) if isinstance(c, str) else None
+            if why:
+                return why
+        return None
+    x = v.strip()
+    if k == "sparse_infill_density":
+        if not _PERCENT.fullmatch(x) or not 0 <= float(x[:-1]) <= 100:
+            return "'sparse_infill_density' must be a percentage from 0% to 100%, such as \"15%\""
+        return None
+    if k in INT_KEYS and not re.fullmatch(r"[0-9]{1,3}", x):
+        return f"'{k}' must be a whole number written as a string, such as \"3\""
+    c = current.strip()
+    if (_NUMBER.fullmatch(c) or _PERCENT.fullmatch(c)) and not (_NUMBER.fullmatch(x) or _PERCENT.fullmatch(x)):
+        return f"'{k}' must be a number written as a string, like {json.dumps(current)[:40]}"
+    return None
+
+
+def job_setting_problem(k: str, v, s: dict) -> str | None:
+    """Why a job may not set `k` to `v` on top of the settings `s`, or None."""
+    if _is_code_key(k):
+        return f"'{k}' holds G-code or file names and cannot be set from a job"
+    if k in ("filament_map", "filament_map_mode"):
+        return f"'{k}' comes from the job's 'nozzles' (filament number to left or right), not 'settings'"
+    if (k in IDENTITY_KEYS or k in HOST_KEYS or k.endswith("_settings_id") or "compatible" in k
+            or "extruder_variant" in k):
+        return (f"'{k}' says which printer, presets or loaded filaments the project is for. It comes "
+                "from the template saved in your Bambu Studio and cannot be set from a job.")
+    if k not in s:
+        return f"unknown key '{k}'"
+    if type(v) is not type(s[k]):
+        return f"'{k}' must look like {json.dumps(s[k])[:40]}"
+    why = _value_shape_problem(k, v, s[k])
+    if why:
+        return why
+    if k in ("layer_height", "initial_layer_print_height"):
+        if not _NUMBER.fullmatch(v.strip()):
+            return f"'{k}' must be a height in mm written as a string, such as \"0.2\""
+        h = float(v)
+        lo = [float(x) for x in _flat_values(s.get("min_layer_height", [])) if _NUMBER.fullmatch(x)]
+        hi = [float(x) for x in _flat_values(s.get("max_layer_height", [])) if _NUMBER.fullmatch(x)]
+        if h <= 0 or (lo and h < max(lo)) or (hi and h > min(hi)):
+            span = f" (this printer: {max(lo):g} to {min(hi):g} mm)" if lo and hi else ""
+            return f"'{k}' {v} mm is outside the layer heights the nozzle can print{span}"
+    return None
+
+
+def design_warnings(job: dict, s: dict, nm) -> list:
+    """Where the design (x2d-job.json `design`) and the project disagree."""
+    d = job.get("design") if isinstance(job.get("design"), dict) else {}
+    out = []
+
+    def num(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+    used = sorted({p["filament"] for o in job["objects"] for p in o["parts"]})
+    want, have = num(d.get("layer_mm")), num(s.get("layer_height"))
+    if want and have and abs(want - have) > 1e-6:
+        out.append(f"The design was made for {want:g} mm layers but the project prints {have:g} mm "
+                   f"layers. Set settings.layer_height to \"{want:g}\" unless the change is wanted.")
+    mat = d.get("material")
+    types = s.get("filament_type", [])
+    if isinstance(mat, str) and mat.strip():
+        other = [f"{i} ({types[i - 1]})" for i in used
+                 if i - 1 < len(types) and str(types[i - 1]).strip().upper() != mat.strip().upper()]
+        if other:
+            out.append(f"The design is for {mat.strip()}, but template filament {', '.join(other)} "
+                       "is another material. Check the spools, then sync and save the template again.")
+    want = num(d.get("nozzle_mm"))
+    sizes = [num(x) for x in _flat_values(s.get("nozzle_diameter", []))]
+    if want and any(x is not None and abs(x - want) > 1e-6 for x in sizes):
+        out.append(f"The design was made for a {want:g} mm nozzle but the template has "
+                   f"{', '.join(_flat_values(s.get('nozzle_diameter', [])))} mm nozzles.")
+    sug = d.get("suggested_nozzles")
+    if isinstance(sug, dict) and sug and nm is not None:
+        for o in job["objects"]:
+            for p in o["parts"]:
+                # format 1 keys by STL name, format 2 by colour name
+                key = p["stl"] if p["stl"] in sug else p.get("colour")
+                w = sug.get(key) if isinstance(key, str) else None
+                if w not in ("left", "right"):
+                    continue
+                h = "left" if nm[p["filament"] - 1] == "1" else "right"
+                if h != w:
+                    msg = (f"The design suggests the {w} nozzle for {key}, but filament {p['filament']} "
+                           f"is on the {h} nozzle. Fix 'nozzles' unless you chose this on purpose.")
+                    if msg not in out:
+                        out.append(msg)
     return out
 
 
@@ -607,14 +834,13 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
     if nm is not None:
         s["filament_map"] = nm
         s["filament_map_mode"] = "Manual"
-    process_changes = []
+    process_changes, differ = [], []
     for k, v in (job.get("settings") or {}).items():
-        if _is_code_key(k):
-            raise UserError(f"settings: '{k}' cannot be set from a job")
-        if k not in s:
-            raise UserError(f"settings: unknown key '{k}'")
-        if type(v) is not type(s[k]):
-            raise UserError(f"settings: '{k}' must look like {json.dumps(s[k])[:40]}")
+        why = job_setting_problem(k, v, s)
+        if why:
+            raise UserError(f"settings: {why}")
+        if s[k] != v:
+            differ.append(k)
         s[k] = v
         process_changes.append(k)
     diff = list(s.get("different_settings_to_system") or [""])
@@ -631,6 +857,7 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
     version = str(s.get("version") or "")
     if not re.fullmatch(r"[0-9.]{1,20}", version):
         raise UserError("template has no Bambu Studio version")
+    report["warnings"].extend(w for w in design_warnings(job, s, nm) if w not in report["warnings"])
 
     files = {}
     # geometry: one sub-model with every mesh, components group them into objects
@@ -722,8 +949,10 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
            'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>\n')
     files["_rels/.rels"] = rel.format("/3D/3dmodel.model")
     files["3D/_rels/3dmodel.model.rels"] = rel.format("/3D/Objects/object_1.model")
+    files[BUILT_ENTRY] = json.dumps({"built_by": "x2d-print", "job": job["name"],
+                                     "note": "a project to print, not a settings template"}, indent=2)
     for name, text in files.items():
-        if name != SETTINGS_ENTRY:
+        if name not in (SETTINGS_ENTRY, BUILT_ENTRY):
             ET.fromstring(text.encode("utf-8"))      # stop here if any XML is broken
 
     report["objects"] = [{"name": o["name"], "size_mm": [round(v, 2) for v in o["_size"]],
@@ -731,7 +960,7 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
                           "parts": [{"name": p["name"], "filament": p["filament"]} for p in o["parts"]]}
                          for o in objects]
     report["filament_map"] = nm
-    report["settings_changed"] = process_changes
+    report["settings_changed"] = differ
     report["template"] = describe_template(s)
     import io
     buf = io.BytesIO()
@@ -769,8 +998,11 @@ def parse_gcode(path: pathlib.Path, filament_map) -> dict:
             "layers_with_swaps": len(swap_layers)}
 
 
-def check_project(path: pathlib.Path, paths: dict) -> dict:
-    """Slice the project with the local Bambu Studio and summarise colour use and waste."""
+def check_project(path: pathlib.Path, paths: dict, presets: tuple | None = None) -> dict:
+    """Slice the project with the local Bambu Studio and summarise colour use and waste.
+
+    `presets` is (official, flat) already resolved for the same printer, process and
+    filament presets (build resolves them once for every version); else they are read."""
     if not paths.get("executable"):
         raise UserError("Bambu Studio is not installed: the check needs it")
     with zipfile.ZipFile(path) as z:
@@ -782,9 +1014,12 @@ def check_project(path: pathlib.Path, paths: dict) -> dict:
         problem = origin_problem(path, project_origin(z, settings), PROJECT_FIX)
     if problem:
         raise UserError(problem)
-    official = official_presets(paths, settings)
-    flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
-                                list(settings["filament_settings_id"]))
+    if presets is None:
+        official = official_presets(paths, settings)
+        flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
+                                    list(settings["filament_settings_id"]))
+    else:
+        official, flat = presets
     unofficial = code_key_differences(settings, flat)
     if unofficial:
         raise UserError("this project carries G-code that is not the official one ("
@@ -804,35 +1039,93 @@ def check_project(path: pathlib.Path, paths: dict) -> dict:
         res = _run_studio(paths["executable"], ["--slice", "1", "--outputdir", str(pathlib.Path(tmp) / "out"), str(src)], tmp)
         rj = pathlib.Path(tmp) / "out" / "result.json"
         if not rj.is_file():
-            raise UserError("Bambu Studio did not slice the file:\n" + res.stdout[-800:] + res.stderr[-800:])
+            raise UserError("Bambu Studio did not slice the file:\n" + (res.stdout or "")[-800:]
+                            + (res.stderr or "")[-800:])
         result = json.loads(rj.read_text(encoding="utf-8"))
         if result.get("return_code", 1) != 0:
             raise UserError(f"Bambu Studio refused to slice: {result.get('error_string')}")
-        plate = result["sliced_plates"][0]
         gcode = next((pathlib.Path(tmp) / "out").glob("plate_*.gcode"), None)
-        stats = parse_gcode(gcode, fmap) if gcode else {}
-        time_line = ""
-        if gcode:
-            with open(gcode, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if "total estimated time" in line:
-                        time_line = line.split("total estimated time:")[-1].strip()
-                        break
+        return summarise_slice(result, gcode, settings, fmap)
+
+
+def gcode_header(path: pathlib.Path) -> dict:
+    """Time text and filament length per filament from the header Bambu Studio writes:
+    '; total estimated time: 38m 12s', '; filament: 1,5', '; total filament length [mm] : a,b'."""
+    out = {"time": "", "lengths_mm": {}}
+    ids, lengths = [], []
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for n, line in enumerate(fh):
+            if n > 400 or line.startswith("; HEADER_BLOCK_END"):
+                break
+            if "total estimated time:" in line:
+                out["time"] = line.split("total estimated time:")[-1].strip()
+            elif line.startswith("; filament:"):
+                ids = [int(x) for x in re.findall(r"[0-9]+", line.split(":", 1)[1])]
+            elif line.startswith("; total filament length [mm]"):
+                lengths = [float(x) for x in re.findall(r"[0-9]+(?:\.[0-9]+)?", line.split(":", 1)[1])]
+    if ids and len(ids) == len(lengths):
+        out["lengths_mm"] = dict(zip(ids, lengths))
+    return out
+
+
+def studio_warnings(value) -> list:
+    """Bambu Studio's warning_message, a string or a list, as short plain lines."""
+    items = value if isinstance(value, list) else [value]
+    out = []
+    for it in items:
+        if isinstance(it, dict):
+            it = it.get("msg") or it.get("message") or it.get("text") or json.dumps(it)
+        if isinstance(it, str):
+            out += [ln.strip()[:300] for ln in it.splitlines() if ln.strip()]
+    return out[:10]
+
+
+def _seconds(v):
+    return round(float(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def summarise_slice(result: dict, gcode, settings: dict, fmap) -> dict:
+    """The check report from Bambu Studio's result.json and the sliced G-code."""
+    plate = result["sliced_plates"][0]
+    stats = parse_gcode(gcode, fmap) if gcode else {}
+    header = gcode_header(gcode) if gcode else {"time": "", "lengths_mm": {}}
     colours = settings.get("filament_colour", [])
+    costs = settings.get("filament_cost", [])
     fil = []
     for f in plate.get("filaments", []):
         i = f["id"]
+        total_g = round(f.get("total_used_g", 0), 2)
+        mm = header["lengths_mm"].get(i)
+        try:
+            per_kg = float(costs[i - 1])
+        except (IndexError, TypeError, ValueError):
+            per_kg = None
         fil.append({"filament": i, "colour": colours[i - 1] if i - 1 < len(colours) else "?",
                     "nozzle": (("left" if fmap[i - 1] == "1" else "right") if fmap else None),
-                    "model_g": round(f.get("main_used_g", 0), 2),
-                    "total_g": round(f.get("total_used_g", 0), 2)})
+                    "model_g": round(f.get("main_used_g", 0), 2), "total_g": total_g,
+                    "length_m": round(mm / 1000, 2) if mm is not None else None,
+                    "cost": round(total_g / 1000 * per_kg, 2) if per_kg is not None else None})
     model = sum(f["model_g"] for f in fil)
     total = sum(f["total_g"] for f in fil)
-    report = {"ok": True, "estimated_time": time_line, "filament_changes": plate.get("filament_change_times"),
+    lengths = [f["length_m"] for f in fil]
+    prices = [f["cost"] for f in fil]
+    ftt = plate.get("feature_type_times") if isinstance(plate.get("feature_type_times"), dict) else {}
+    warnings = studio_warnings(plate.get("warning_message")) + studio_warnings(result.get("warning_message"))
+    report = {"ok": True, "estimated_time": header["time"], "time_s": _seconds(plate.get("total_predication")),
+              "flush_time_s": _seconds(ftt.get("Flush")), "prime_tower_time_s": _seconds(ftt.get("Prime tower")),
+              "filament_changes": plate.get("filament_change_times"),
               "model_g": round(model, 1), "total_g": round(total, 1), "waste_g": round(total - model, 1),
-              "filaments": fil, **stats, "advice": []}
+              "metres": round(sum(lengths), 2) if fil and None not in lengths else None,
+              "cost": round(sum(prices), 2) if fil and None not in prices else None,
+              "filaments": fil, **stats, "studio_warnings": warnings, "advice": []}
     report["advice"] = colour_advice(report, settings, fmap)
     return report
+
+
+def many_swap_layers(r: dict) -> bool:
+    """True when same-nozzle colour swaps happen in more than 30 % of the layers."""
+    layers = max(r.get("layers") or 1, 1)
+    return bool(r.get("swaps_same_nozzle", 0)) and r.get("layers_with_swaps", 0) > layers * 0.3
 
 
 def colour_advice(r: dict, settings: dict, fmap) -> list:
@@ -845,16 +1138,18 @@ def colour_advice(r: dict, settings: dict, fmap) -> list:
         adv.append(f"Different materials in one print ({', '.join(sorted(used_types))}): they may not stick to each other.")
     if len(used) > 1 and settings.get("enable_prime_tower") == "0":
         adv.append("Prime tower is off with several colours: turn it on unless you know why it is off.")
-    layers = max(r.get("layers") or 1, 1)
-    with_swaps = r.get("layers_with_swaps", 0)
-    if r.get("swaps_same_nozzle", 0) and with_swaps > layers * 0.3:
+    many = many_swap_layers(r)
+    with_swaps, layers = r.get("layers_with_swaps", 0), max(r.get("layers") or 1, 1)
+    if many:
         adv.append(f"Colours swap on the same nozzle in {with_swaps} of {layers} layers: every swap "
                    "cuts and purges filament. Keep extra colours to a few layers (the first or the last).")
     if r["waste_g"] > max(r["model_g"], 5):
         adv.append(f"Purge waste ({r['waste_g']} g) is more than the part itself ({r['model_g']} g). "
                    "Normal for a small part with several colours; to cut it, use fewer colours or fewer "
                    "layers with colour, or print several copies on one plate (they share the purges).")
-    if fmap and used:
+    # Only when colours meet on one nozzle in many layers. When they change only by height
+    # (few layers with swaps) everything stays on the left nozzle: colour rule 2.
+    if fmap and used and many:
         heavy = max(used, key=lambda f: f["model_g"])
         shared = [f for f in used if f is not heavy and f["nozzle"] == heavy["nozzle"]]
         other = [f for f in used if f["nozzle"] != heavy["nozzle"]]
@@ -911,7 +1206,11 @@ def cmd_templates(a):
     out = []
     for p, origin in items:
         try:
-            out.append({"path": str(p), "origin": origin, **describe_template(read_template(p))})
+            row = {"path": str(p), "origin": origin, **describe_template(read_template(p))}
+            note = built_project_note(p)
+            if note:
+                row["warning"] = note
+            out.append(row)
         except (UserError, ValueError, zipfile.BadZipFile) as e:
             out.append({"path": str(p), "origin": origin, "error": str(e)})
     _print(out)
@@ -941,6 +1240,101 @@ def output_path(job: dict, value, template: pathlib.Path, force: bool) -> pathli
     return real
 
 
+def write_project(out: pathlib.Path, data: bytes, check, settings_changed: list):
+    """Write `data` to a temporary file next to `out`, check it when `check` is a callable
+    (path -> report), then move it into place. On any failure the temporary file is
+    deleted and `out` is left as it was."""
+    fd, tmp = tempfile.mkstemp(prefix=f".{out.stem}-", suffix=".tmp.3mf", dir=str(out.parent))
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.chmod(tmp, 0o644)
+        report = check(pathlib.Path(tmp)) if check else None
+        os.replace(tmp, out)
+        return report
+    except BaseException as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        if isinstance(e, UserError) and settings_changed:
+            raise UserError(f"{e}\nNo file was written. The job changes these settings from the "
+                            f"template: {', '.join(settings_changed)}. One of them may be the "
+                            "cause: build again without it to see.") from e
+        if isinstance(e, UserError):
+            raise UserError(f"{e}\nNo file was written.") from e
+        raise
+
+
+def _minutes_range(est: dict):
+    m = est.get("minutes")
+    if isinstance(m, list) and len(m) == 2 and all(isinstance(x, (int, float)) for x in m):
+        return [min(m), max(m)]
+    r = est.get("minutes_range")
+    if isinstance(r, list) and len(r) == 2 and all(isinstance(x, (int, float)) for x in r):
+        return [min(r), max(r)]
+    if isinstance(m, (int, float)) and not isinstance(m, bool):
+        return [m, m]
+    return None
+
+
+def _drift(real, est):
+    if real is None or not isinstance(est, (int, float)) or isinstance(est, bool) or est <= 0:
+        return None
+    return round((real - est) / est * 100)
+
+
+def comparison_row(name: str, about, output: str, est, chk) -> dict:
+    """One version: real numbers from the check next to the design's estimate.
+
+    The design's `grams` count model plus purge (3d-print-design estimate.py), so they are
+    compared with total_g; `model_g` with model_g. Minutes are a range: the drift is 0 inside
+    it, else measured from the nearest end."""
+    chk = chk or {}
+    est = est if isinstance(est, dict) else {}
+    row = {"version": name, "about": about if isinstance(about, str) else "", "output": output,
+           "time": chk.get("estimated_time"), "time_s": chk.get("time_s"), "model_g": chk.get("model_g"),
+           "purge_g": chk.get("waste_g"), "total_g": chk.get("total_g"), "metres": chk.get("metres"),
+           "cost": chk.get("cost"), "filament_changes": chk.get("filament_changes"), "estimate": est,
+           "drift_pct": {}}
+    rng = _minutes_range(est)
+    if rng and chk.get("time_s") is not None:
+        real = chk["time_s"] / 60
+        row["minutes_in_range"] = rng[0] <= real <= rng[1]
+        edge = rng[0] if real < rng[0] else (rng[1] if real > rng[1] else None)
+        row["drift_pct"]["minutes"] = 0 if edge is None else _drift(real, edge)
+    for key, real in (("grams", chk.get("total_g")), ("model_g", chk.get("model_g")),
+                      ("metres", chk.get("metres"))):
+        d = _drift(real, est.get(key))
+        if d is not None:
+            row["drift_pct"][key] = d
+    return row
+
+
+def comparison_table(rows: list) -> str:
+    """The comparison as a short plain-text table."""
+    def cell(v, fmt="{:g}"):
+        return "?" if v is None else fmt.format(v)
+
+    def pct(v):
+        return "" if v is None else f"{v:+d}%"
+    head = ["version", "time", "model g", "purge g", "total g", "metres", "cost", "changes",
+            "design g", "design min", "drift g", "drift min"]
+    lines = []
+    for r in rows:
+        e = r["estimate"]
+        rng = _minutes_range(e)
+        lines.append([r["version"], r["time"] or "?", cell(r["model_g"]), cell(r["purge_g"]),
+                      cell(r["total_g"]), cell(r["metres"]), cell(r["cost"], "{:.2f}"),
+                      cell(r["filament_changes"]), cell(e.get("grams")),
+                      "" if not rng else (f"{rng[0]:g}" if rng[0] == rng[1] else f"{rng[0]:g}-{rng[1]:g}"),
+                      pct(r["drift_pct"].get("grams")),
+                      "in range" if r.get("minutes_in_range") else pct(r["drift_pct"].get("minutes"))])
+    widths = [max(len(str(x)) for x in col) for col in zip(head, *lines)]
+    return "\n".join("  ".join(str(x).ljust(w) for x, w in zip(row, widths)).rstrip()
+                     for row in [head] + lines)
+
+
 def cmd_build(a):
     job_path = pathlib.Path(a.job).resolve()
     job = load_job(job_path)
@@ -950,26 +1344,81 @@ def cmd_build(a):
     if not tpl.is_file():
         raise UserError("no settings template: pass --template or set 'template' in the job")
     settings = read_template(tpl)
+    tpl_note = built_project_note(tpl)
     paths = studio_paths(a.studio)
+    # resolved once: every version uses the template's printer, process and filament presets
     flat = official_code_values(paths, settings["printer_settings_id"], settings["print_settings_id"],
                                 list(settings["filament_settings_id"]))
     official = official_presets(paths, settings)
-    report = {"warnings": []}
-    data = build_project(job, settings, flat, report, official)
-    out = output_path(job, a.out or job.get("output"), tpl, a.force)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out = output_path(job, str(out), tpl, a.force)   # again, now that the folder exists
-    out.write_bytes(data)
-    report["output"] = str(out)
-    report["template_path"] = str(tpl)
-    if a.check:
-        chk = check_project(out, paths)
-        if len(job["objects"]) > 1 and chk.get("layers_with_swaps", 0) > max(chk.get("layers") or 1, 1) * 0.3:
-            chk["advice"].insert(0, "Several objects share the plate and their colours alternate on the "
-                                    "same nozzle in most layers. Print them on separate plates: one job "
-                                    "and one 3MF per plate.")
-        report["check"] = chk
-    _print(report)
+    if a.variants and not job["variants"]:
+        raise UserError("--variants: the job lists no 'variants'")
+    versions = [(None, job)] + ([(v, variant_job(job, v)) for v in job["variants"]] if a.variants else [])
+    main_out = output_path(job, a.out or job.get("output"), tpl, a.force)
+
+    # build every version in memory and check every output path before writing anything
+    planned = []
+    for v, vj in versions:
+        report = {"warnings": list(job["_warnings"]) + ([tpl_note] if tpl_note else [])}
+        try:
+            data = build_project(vj, settings, flat, report, official)
+        except UserError as e:
+            raise UserError(f"variant {v['name']!r}: {e}" if v else str(e)) from e
+        out = main_out if v is None else main_out.with_name(f"{main_out.stem}-{v['name']}.3mf")
+        planned.append((v, vj, data, output_path(job, str(out), tpl, a.force), report))
+    if job["variants"] and not a.variants:
+        planned[0][4]["warnings"].append(
+            f"the job lists {len(job['variants'])} other version(s) ("
+            + ", ".join(v["name"] for v in job["variants"]) + "): add --variants to build and compare them")
+
+    def check_fn(vj):
+        def run(path):
+            chk = check_project(path, paths, (official, flat))
+            if len(vj["objects"]) > 1 and many_swap_layers(chk):
+                chk["advice"].insert(0, "Several objects share the plate and their colours alternate on "
+                                        "the same nozzle in most layers. Print them on separate plates: "
+                                        "one job and one 3MF per plate.")
+            return chk
+        return run
+
+    failed, rows = [], []
+    for v, vj, data, out, report in planned:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out = output_path(job, str(out), tpl, a.force)   # again, now that the folder exists
+        try:
+            chk = write_project(out, data, check_fn(vj) if a.check else None, report["settings_changed"])
+        except UserError as e:
+            if v is None:
+                raise
+            report["error"] = str(e)
+            failed.append(v["name"])
+            chk = None
+        else:
+            report["output"] = str(out)
+        if chk is not None:
+            report["check"] = chk
+        design = job.get("design") if isinstance(job.get("design"), dict) else {}
+        if v is None:
+            label = design.get("variant") if isinstance(design.get("variant"), str) else "chosen"
+            name, est, about = f"{label} (chosen)", design.get("estimate"), "the version in the job's top level"
+        else:
+            name, est, about = v["name"], v.get("estimate"), v.get("about")
+        if a.variants or (a.check and isinstance(est, dict)):
+            rows.append(comparison_row(name, about, report.get("output", ""), est, chk))
+    result = planned[0][4]
+    result["template_path"] = str(tpl)
+    if a.variants:
+        result["variants"] = [{"name": v["name"], "about": v.get("about"),
+                               **{k: x for k, x in r.items() if k not in ("template", "code_keys_replaced")}}
+                              for v, _, _, _, r in planned[1:]]
+    if failed:
+        result["failed_variants"] = failed
+    if rows:
+        result["comparison"] = rows
+        result["table"] = comparison_table(rows)
+    _print(result)
+    if rows:
+        print(result["table"], file=sys.stderr)
+    return 1 if failed else 0
 
 
 def cmd_check(a):
@@ -990,13 +1439,15 @@ def main(argv=None):
     b.add_argument("--out")
     b.add_argument("--check", action="store_true", help="also slice it to check")
     b.add_argument("--force", action="store_true", help="replace an existing output file")
+    b.add_argument("--variants", action="store_true",
+                   help="also build each version in the job's 'variants' as <output>-<name>.3mf")
     b.set_defaults(fn=cmd_build)
     c = sp.add_parser("check", help="slice a project with Bambu Studio and report")
     c.add_argument("file")
     c.set_defaults(fn=cmd_check)
     a = ap.parse_args(argv)
     try:
-        a.fn(a)
+        code = a.fn(a)
     except UserError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -1004,7 +1455,7 @@ def main(argv=None):
             zipfile.BadZipFile) as e:
         print(f"error: unreadable input ({type(e).__name__}: {str(e)[:200]})", file=sys.stderr)
         return 2
-    return 0
+    return code or 0
 
 
 if __name__ == "__main__":
