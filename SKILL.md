@@ -251,7 +251,8 @@ version the time, model, purge and total grams, metres, cost, colour changes, an
 design's estimate with the drift in % (grams against total grams; minutes against the
 estimated range, `in range` when inside). When the plate holds fewer copies than
 `design.quantity`, the estimate is compared per copy (`estimate_compared`, `compared_as`
-and the `copies` column), so the drift is real. A variant that fails to slice is listed
+and the `copies` column), so the drift is close to real (the printer's preparation,
+about 6 minutes, is shared by the copies, so one copy alone reads a little slower). A variant that fails to slice is listed
 in `failed_variants` with its `error` and gets no file; the others are kept.
 
 For a beginner, say it simply, with the real numbers from `table`. Illustrative example
