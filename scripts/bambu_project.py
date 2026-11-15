@@ -892,6 +892,17 @@ def _shelves(objects: list, y0: float, y1: float, cx: float, cy: float, gap: flo
     return True
 
 
+def _rotate_z90(o: dict) -> None:
+    """Turn an object 90 degrees about Z (x, y -> -y, x): its parts, centre and size."""
+    o["parts"] = [dict(p, v=[(-y, x, z) for x, y, z in p["v"]]) if "v" in p else dict(p)
+                  for p in o["parts"]]
+    if "_centre" in o:
+        cx, cy, cz = o["_centre"]
+        o["_centre"] = [-cy, cx, cz]
+    o["_size"] = [o["_size"][1], o["_size"][0], o["_size"][2]]
+    o["_rotated"] = True
+
+
 def place_objects(objects, settings, nm=None) -> list:
     """Lay the objects on the bed in rows, centred, in front of the prime tower, each inside
     the reach of the nozzles its parts print with. Returns notes for the report; raises
@@ -934,6 +945,16 @@ def place_objects(objects, settings, nm=None) -> list:
         if alone:
             if (edge, front, gap) != SPACINGS[-1]:
                 continue
+            turnable = [o for o in alone if not o.get("_rotated")
+                        and o["_size"][1] <= o["_xlim"][1] - o["_xlim"][0]
+                        and o["_size"][0] <= y1 - y0]
+            if turnable and len(turnable) == len(alone):
+                for o in turnable:
+                    _rotate_z90(o)
+                notes = place_objects(objects, settings, nm)
+                return [f"object {safe_text(o['name'])!r} turned 90 degrees about Z to fit on the bed"
+                        + (" within the right nozzle's reach" if o["_right"] else "")
+                        for o in turnable] + notes
             o = alone[0]
             within = (f" within the right nozzle's reach (from x = {o['_box'][0]:g} mm)"
                       if o["_right"] else "")
@@ -976,7 +997,8 @@ def place_copies(objects: list, quantity: int, settings: dict, nm, report: dict)
             f"design.quantity is {quantity}, but {why}: the project holds one copy of each object. "
             f"In Bambu Studio select the object, add {quantity - 1} copies with + and press Arrange (A); "
             "print the copies that do not fit as a second plate. The design's estimate is for "
-            f"{quantity} copies, so the comparison uses it per copy (estimate / {quantity}).")
+            f"{quantity} copies, so the comparison uses its one-copy estimate when the design gives "
+            f"one, else the estimate / {quantity} (approximate).")
     report["warnings"].extend(place_objects(objects, settings, nm))
     report["copies"] = {"per_object": 1, "design_quantity": quantity}
     return objects
@@ -1513,10 +1535,16 @@ def comparison_row(name: str, about, output: str, est, chk, copies: int = 1, qua
            "cost": chk.get("cost"), "filament_changes": chk.get("filament_changes"), "estimate": est,
            "copies": copies, "drift_pct": {}}
     if quantity > 1 and copies != quantity and est:
-        est = scaled_estimate(est, copies / quantity)
+        one = est.get("one_copy")
+        if copies == 1 and isinstance(one, dict) and _minutes_range(one):
+            est = one
+            row["compared_as"] = "the design's estimate for one copy"
+        else:
+            est = scaled_estimate(est, copies / quantity)
+            row["compared_as"] = (f"design estimate for {quantity} copies, scaled to the {copies} "
+                                  f"cop{'y' if copies == 1 else 'ies'} on the plate (approximate: "
+                                  "preparation and minimum layer time do not scale)")
         row["estimate_compared"] = est
-        row["compared_as"] = (f"design estimate for {quantity} copies, scaled to the {copies} "
-                              f"cop{'y' if copies == 1 else 'ies'} on the plate")
     rng = _minutes_range(est)
     if rng and chk.get("time_s") is not None:
         real = chk["time_s"] / 60

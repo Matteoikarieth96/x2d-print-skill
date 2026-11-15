@@ -59,6 +59,8 @@ Every XML entry is parsed back before the zip is written.
 Each object is centred on its own bounding box, laid on the bed (lowest point at z = 0)
 and placed with a simple shelf packing: deepest objects first, left to right in a row,
 a new row behind when the next one does not fit, the whole block centred on the plate.
+An object that fits only turned 90 degrees about Z (for example a wide part on the right
+nozzle, which cannot reach x < 20.5 mm) is turned, and the report's `warnings` say so.
 Rows stay in front of the prime tower position when they can (10 mm gaps, 5 mm from the
 edges, 10 mm from the front edge where the purge line runs); if not, a tighter spacing
 and the whole depth are tried, with a note that the tower may move. If they still do not

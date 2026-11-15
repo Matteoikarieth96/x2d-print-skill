@@ -48,6 +48,8 @@ and linked to the printer, and what is loaded in the AMS.
 
 ## Install
 
+Using the [urbe-x2d-starter-kit](https://github.com/Matteoikarieth96/urbe-x2d-starter-kit)? Its `./install.sh` already installs this skill and 3d-print-design: skip this section.
+
 ```bash
 mkdir -p ~/.claude/skills
 git clone https://github.com/Matteoikarieth96/x2d-print-skill.git
@@ -138,6 +140,16 @@ python3 -m unittest discover -s tests
 They need no Bambu Studio. CI runs them on every push and pull request. The slicing check
 was validated by hand with Bambu Studio 2.9.1 against the same project set up in the
 Bambu Studio window.
+
+## For maintainers
+
+The [urbe-x2d-starter-kit](https://github.com/Matteoikarieth96/urbe-x2d-starter-kit)
+carries a copy of this skill. After merging a change to `main`, run the kit's sync so the
+copy follows (GitHub turns its nightly run off after 60 days without activity):
+
+```bash
+gh workflow run sync.yml -R Matteoikarieth96/urbe-x2d-starter-kit
+```
 
 ## More skills
 

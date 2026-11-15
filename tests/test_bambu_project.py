@@ -912,6 +912,21 @@ class TestFormat2(CliBase):
         self.assertEqual(row["copies"], 1)
         self.assertEqual(row["estimate_compared"]["grams"], 6.0)    # 18 g for 3 copies
         self.assertEqual(row["drift_pct"]["grams"], 225)            # 19.5 g against 6 g
+        self.assertIn("approximate", row["compared_as"])
+
+    def test_one_copy_estimate_used_when_given(self):
+        write_box_stl(self.dir / "base.stl", 0, 0, 0, 120, 120, 3)
+        j = self.format2()
+        j["design"]["quantity"] = 3
+        est = j["design"]["estimate"]
+        est["one_copy"] = {"grams": 19.0, "model_g": 19.0, "minutes": [20, 40]}
+        self.write_job(j)
+        code, out, err = self.run_main(["build", str(self.dir / "job.json"), "--check"], fake_slicer())
+        self.assertEqual(code, 0, err)
+        row = json.loads(out)["comparison"][0]
+        self.assertEqual(row["compared_as"], "the design's estimate for one copy")
+        self.assertEqual(row["estimate_compared"]["grams"], 19.0)
+        self.assertEqual(row["drift_pct"]["grams"], 3)              # 19.5 g against 19 g
 
     def test_bad_variant_setting_writes_nothing(self):
         v = self.variants()
@@ -1011,13 +1026,31 @@ class TestPlacement(unittest.TestCase):
         bp.place_objects(o, s, ["1", "2"])
         self.assert_on_bed(o, x_from=100)
         # default X2D reach when the template does not say
-        o = objs((240, 20, 2))
+        o = objs((240, 240, 2))
         with self.assertRaises(bp.UserError) as ctx:
             bp.place_objects(o, template_settings(), ["1", "2"])
         self.assertIn("right nozzle's reach", str(ctx.exception))
         o = objs((240, 20, 1))
         bp.place_objects(o, template_settings(), ["1", "2"])     # fine on the left nozzle
         self.assert_on_bed(o)
+
+    def test_turned_when_it_fits_only_rotated(self):
+        # 240 x 200 on the right nozzle: too wide for x from 20.5 mm, fits turned 90 degrees
+        o = objs((240, 200, 2))
+        o[0]["parts"][0]["v"] = [(0, 0, 0), (240, 200, 3)]
+        o[0]["_centre"] = [120, 100, 1.5]
+        notes = bp.place_objects(o, template_settings(), ["1", "2"])
+        self.assertIn("turned 90 degrees", " ".join(notes))
+        self.assertEqual(o[0]["_size"][:2], [200, 240])
+        self.assertEqual(o[0]["parts"][0]["v"][1], (-200, 240, 3))
+        self.assertEqual(o[0]["_centre"], [-100, 120, 1.5])
+        self.assert_on_bed(o, x_from=20.5)
+
+    def test_turned_copies_do_not_share_vertices(self):
+        part = {"filament": 2, "v": [(0, 0, 0), (240, 200, 3)]}
+        o = [{"name": "a", "parts": [part], "_size": [240, 200, 3.0]}]
+        bp.place_objects(o, template_settings(), ["1", "2"])
+        self.assertEqual(part["v"][1], (240, 200, 3))      # the original part is untouched
 
     def test_mixed_row_keeps_right_parts_reachable(self):
         o = objs((100, 30, 1), (100, 30, 2))
