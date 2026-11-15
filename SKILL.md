@@ -250,9 +250,11 @@ another. The JSON gets `comparison` and `table` (also printed as plain text): pe
 version the time, model, purge and total grams, metres, cost, colour changes, and the
 design's estimate with the drift in % (grams against total grams; minutes against the
 estimated range, `in range` when inside). When the plate holds fewer copies than
-`design.quantity`, the estimate is compared per copy (`estimate_compared`, `compared_as`
-and the `copies` column), so the drift is close to real (the printer's preparation,
-about 6 minutes, is shared by the copies, so one copy alone reads a little slower). A variant that fails to slice is listed
+`design.quantity`, the comparison uses the design's one-copy estimate (`estimate.one_copy`,
+written by 3d-print-design) when it is there, so the drift is real; an older job without it
+is compared with the estimate divided by the copies, marked "approximate" in `compared_as`
+(preparation and minimum layer time do not divide). See `estimate_compared` and the
+`copies` column. A variant that fails to slice is listed
 in `failed_variants` with its `error` and gets no file; the others are kept.
 
 For a beginner, say it simply, with the real numbers from `table`. Illustrative example
