@@ -28,6 +28,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
@@ -103,8 +104,41 @@ INT_KEYS = frozenset(("wall_loops", "top_shell_layers", "bottom_shell_layers"))
 _PERCENT = re.compile(r"-?[0-9]+(\.[0-9]+)?%")
 
 
+# Copies of each object placed on the plate when the design asks for several (design.quantity).
+MAX_COPIES = 50
+MAX_COPY_FACES = 1_000_000      # above this many triangles in all, one copy is placed
+# Placement: (margin from the bed edges, margin from the front edge where the purge line
+# runs, gap between objects). The roomy spacing first, then a tight one before giving up.
+SPACINGS = ((5.0, 10.0, 10.0), (3.0, 5.0, 5.0))
+TOWER_MM = 10.0             # objects stay this far in front of the prime tower when they can
+# Where the X2D's right nozzle reaches, when the template does not say (extruder_printable_area).
+X2D_RIGHT_REACH_X = 20.5
+# Strings read from a template or project (possibly a downloaded file) are printed into the
+# agent's context: they are cut to this length and stripped of control characters.
+TEXT_LIMIT = 80
+_COLOUR = re.compile(r"#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?")
+
+
 class UserError(Exception):
     """A problem the person can fix; printed without a traceback."""
+
+
+def safe_text(v, limit: int = TEXT_LIMIT):
+    """A value from an untrusted file, safe to print: control and invisible characters
+    become spaces, runs of spaces one, and at most `limit` characters are kept."""
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        v = json.dumps(v, ensure_ascii=False, default=str)
+    v = "".join(" " if unicodedata.category(ch) in ("Cc", "Cf", "Cs", "Co", "Zl", "Zp") else ch
+                for ch in v)
+    v = re.sub(r"\s+", " ", v).strip()
+    return v if len(v) <= limit else v[:limit - 3] + "..."
+
+
+def safe_colour(v) -> str:
+    """A colour from an untrusted file: only #RRGGBB or #RRGGBBAA, else '?'."""
+    return v if isinstance(v, str) and _COLOUR.fullmatch(v) else "?"
 
 
 # --------------------------------------------------------------------------- Bambu Studio
@@ -184,11 +218,11 @@ class _Presets:
         if name in self.cache:
             return self.cache[name]
         if _depth > 20:
-            raise UserError(f"preset chain too deep at '{name}'")
+            raise UserError(f"preset chain too deep at '{safe_text(name)}'")
         path = self.index.get(name)
         if path is None or not path.is_file():
             raise UserError(
-                f"'{name}' is not an official Bambu preset on this computer. Save the template "
+                f"'{safe_text(name)}' is not an official Bambu preset on this computer. Save the template "
                 "again in Bambu Studio with system presets only (no custom or user presets), "
                 "or update Bambu Studio.")
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -359,14 +393,16 @@ def origin_problem(path: pathlib.Path, origin: dict, fix: str) -> str | None:
     app, model = origin["application"], origin["printer_model"]
     if app and app.startswith("BambuStudio-") and model == X2D_MODEL:
         return None
+    # both strings come from the file itself: printed only cut and cleaned
+    name, app_s, model_s = safe_text(path.name, 120), safe_text(app), safe_text(model)
     if app and not app.startswith("BambuStudio-"):
-        why = (f"{path.name} was rewritten by another slicer ({app}, printer "
-               f"{model or 'unknown'}), probably opened with a double click. Bambu Studio "
+        why = (f"{name} was rewritten by another slicer ({app_s}, printer "
+               f"{model_s or 'unknown'}), probably opened with a double click. Bambu Studio "
                "may crash on it or print with the wrong printer's settings.")
     elif not app:
-        why = f"{path.name} was not saved by Bambu Studio (no Application metadata)."
+        why = f"{name} was not saved by Bambu Studio (no Application metadata)."
     else:
-        why = (f"{path.name} is set up for {model or 'an unknown printer'}, not the "
+        why = (f"{name} is set up for {model_s or 'an unknown printer'}, not the "
                f"{X2D_MODEL}.")
     return why + " " + fix
 
@@ -398,24 +434,30 @@ def built_project_note(path: pathlib.Path) -> str | None:
     return None
 
 
+def _list(v) -> list:
+    return v if isinstance(v, list) else []
+
+
 def describe_template(settings: dict) -> dict:
-    fil = settings.get("filament_settings_id", [])
-    colours = settings.get("filament_colour", [])
-    types = settings.get("filament_type", [])
+    """The template's printer, plate and filaments, for the person to confirm. Every string
+    comes from the file (possibly a downloaded one): cut and cleaned before printing."""
+    fil = _list(settings.get("filament_settings_id"))
+    colours = _list(settings.get("filament_colour"))
+    types = _list(settings.get("filament_type"))
     return {
-        "printer": settings.get("printer_settings_id"),
-        "process": settings.get("print_settings_id"),
-        "plate": settings.get("curr_bed_type"),
-        "layer_height": settings.get("layer_height"),
-        "nozzles": len(settings.get("nozzle_diameter", [])) or 1,
+        "printer": safe_text(settings.get("printer_settings_id")),
+        "process": safe_text(settings.get("print_settings_id")),
+        "plate": safe_text(settings.get("curr_bed_type")),
+        "layer_height": safe_text(settings.get("layer_height")),
+        "nozzles": len(_list(settings.get("nozzle_diameter"))) or 1,
         "filaments": [
-            {"number": i + 1, "colour": (colours[i] if i < len(colours) else "?"),
-             "type": (types[i] if i < len(types) else "?"), "preset": name}
+            {"number": i + 1, "colour": safe_colour(colours[i] if i < len(colours) else None),
+             "type": safe_text(types[i]) if i < len(types) else "?", "preset": safe_text(name)}
             for i, name in enumerate(fil)],
         # A template records colours and materials, not where each spool sits.
         "where_loaded": ("unknown: the template does not record which AMS slot or external "
                          "spool holds each filament. Ask the person."),
-        "studio_version": settings.get("version"),
+        "studio_version": safe_text(settings.get("version")),
     }
 
 
@@ -551,6 +593,12 @@ def load_job(path: pathlib.Path) -> dict:
         job["_warnings"].append(f"the job says design format {fmt!r}; this skill knows formats "
                                 f"{', '.join(str(f) for f in JOB_FORMATS)}: update x2d-print if "
                                 "something is missing")
+    q = (design or {}).get("quantity")
+    if q is None:
+        q = 1
+    if not isinstance(q, int) or isinstance(q, bool) or not 1 <= q <= MAX_COPIES:
+        raise UserError(f"job: design.quantity must be a whole number from 1 to {MAX_COPIES}")
+    job["_quantity"] = q
     job["settings"] = _settings_dict(job.get("settings"), "job")
     if job.get("nozzles") is not None and not isinstance(job["nozzles"], dict):
         raise UserError('job: \'nozzles\' must be an object such as {"1": "left", "2": "right"}')
@@ -737,8 +785,12 @@ def design_warnings(job: dict, s: dict, nm) -> list:
                     continue
                 h = "left" if nm[p["filament"] - 1] == "1" else "right"
                 if h != w:
-                    msg = (f"The design suggests the {w} nozzle for {key}, but filament {p['filament']} "
-                           f"is on the {h} nozzle. Fix 'nozzles' unless you chose this on purpose.")
+                    where = ("the external spool holder (right nozzle)" if w == "right"
+                             else "the AMS (left nozzle)")
+                    msg = (f"Advice: the design suggested the {w} nozzle for {key} because its plan "
+                           f"prints faster that way; here filament {p['filament']} is on the {h} "
+                           f"nozzle. Keep yours if {where} is not available for that colour; "
+                           f"otherwise set nozzles \"{p['filament']}\": \"{w}\" and rebuild.")
                     if msg not in out:
                         out.append(msg)
     return out
@@ -755,35 +807,179 @@ def _num(v: float) -> str:
     return "0" if s in ("", "-0") else s
 
 
-def place_objects(objects, settings, gap=10.0):
-    """Centre the objects side by side on the bed, away from the prime tower."""
-    area = settings.get("printable_area") or ["0x0", "256x0", "256x256", "0x256"]
-    pts = [tuple(float(c) for c in p.split("x")) for p in area]
-    bx0, by0 = min(p[0] for p in pts), min(p[1] for p in pts)
-    bx1, by1 = max(p[0] for p in pts), max(p[1] for p in pts)
-    widths = [o["_size"][0] for o in objects]
-    total = sum(widths) + gap * (len(objects) - 1)
-    depth = max(o["_size"][1] for o in objects)
-    cy = (by0 + by1) / 2
-    try:
-        tower_y = float((settings.get("wipe_tower_y") or [None])[0])
-    except (TypeError, ValueError):
-        tower_y = None
-    if tower_y is not None and cy + depth / 2 + 10 > tower_y:
-        cy = max(by0 + depth / 2 + 10, tower_y - 10 - depth / 2)
-    x = (bx0 + bx1) / 2 - total / 2
-    if total > bx1 - bx0 - 10 or depth > by1 - by0 - 10:
-        raise UserError(f"the objects ({total:.0f} x {depth:.0f} mm) do not fit on the bed")
+def _corners(text) -> list:
+    """'0x0,256x0,...' or ['0x0', '256x0', ...] as (x, y) points; [] when unreadable."""
+    items = text.split(",") if isinstance(text, str) else (text if isinstance(text, list) else [])
+    pts = []
+    for p in items:
+        try:
+            x, y = (float(c) for c in str(p).strip().split("x"))
+        except ValueError:
+            return []
+        if not (math.isfinite(x) and math.isfinite(y)):
+            return []
+        pts.append((x, y))
+    return pts
+
+
+def _inner_box(pts) -> tuple:
+    """A rectangle inside a four-corner area (the area itself when it is a rectangle)."""
+    xs, ys = sorted(p[0] for p in pts), sorted(p[1] for p in pts)
+    if len(pts) >= 4:
+        return xs[1], ys[1], xs[-2], ys[-2]
+    return xs[0], ys[0], xs[-1], ys[-1]
+
+
+def nozzle_reach(settings: dict, n_nozzles: int) -> list:
+    """Per nozzle, the rectangle of the bed it can print on, from extruder_printable_area.
+    Without it a two-nozzle X2D gets the right nozzle's known limit (x from 20.5 mm)."""
+    bed = _corners(settings.get("printable_area")) or _corners(["0x0", "256x0", "256x256", "0x256"])
+    bed_box = _inner_box(bed)
+    areas = settings.get("extruder_printable_area")
+    out = []
+    for i in range(n_nozzles):
+        pts = _corners(areas[i]) if isinstance(areas, list) and i < len(areas) else []
+        if pts:
+            out.append(_inner_box(pts))
+        elif i == 1:
+            out.append((max(bed_box[0], X2D_RIGHT_REACH_X),) + bed_box[1:])
+        else:
+            out.append(bed_box)
+    return out
+
+
+def _row_start(row: list, centre: float, gap: float):
+    """Left edge of a row of objects (in this order) closest to `centre` that keeps each
+    object inside its own x limits, or None when no left edge does."""
+    lo, hi, off = -math.inf, math.inf, 0.0
+    for o in row:
+        w = o["_size"][0]
+        lo, hi = max(lo, o["_xlim"][0] - off), min(hi, o["_xlim"][1] - off - w)
+        off += w + gap
+    if lo > hi + 1e-9:
+        return None
+    return min(max(centre - (off - gap) / 2, lo), hi)
+
+
+def _shelves(objects: list, y0: float, y1: float, cx: float, cy: float, gap: float) -> bool:
+    """Shelf packing: objects, deepest first, go left to right in a row; when the next one
+    does not fit, a new row starts behind it. The rows are centred on (cx, cy) as far as
+    the y range [y0, y1] and each object's x limits allow. Sets `_place`; False if it
+    does not fit."""
+    order = sorted(objects, key=lambda o: (-o["_size"][1], -o["_size"][0]))
+    rows, cur = [], []
+    for o in order:
+        cand = sorted(cur + [o], key=lambda q: q["_xlim"][0])    # right-nozzle parts to the right
+        if _row_start(cand, cx, gap) is not None:
+            cur = cand
+            continue
+        if not cur or _row_start([o], cx, gap) is None:
+            return False
+        rows.append(cur)
+        cur = [o]
+    rows.append(cur)
+    depths = [max(o["_size"][1] for o in r) for r in rows]
+    total = sum(depths) + gap * (len(rows) - 1)
+    if total > y1 - y0 + 1e-9:
+        return False
+    y = min(max(cy - total / 2, y0), y1 - total)
+    for r, d in zip(rows, depths):
+        x = _row_start(r, cx, gap)
+        for o in r:
+            o["_place"] = (x + o["_size"][0] / 2, y + d / 2, o["_size"][2] / 2)
+            x += o["_size"][0] + gap
+        y += d + gap
+    return True
+
+
+def place_objects(objects, settings, nm=None) -> list:
+    """Lay the objects on the bed in rows, centred, in front of the prime tower, each inside
+    the reach of the nozzles its parts print with. Returns notes for the report; raises
+    UserError when they do not fit on one plate."""
+    reach = nozzle_reach(settings, 2 if nm is not None else 1)
+    bed = _inner_box(_corners(settings.get("printable_area")) or _corners(["0x0", "256x0", "256x256", "0x256"]))
+    per_noz_h = [float(x) for x in _flat_values(settings.get("extruder_printable_height") or [])
+                 if _NUMBER.fullmatch(x)]
     try:
         max_h = float(settings.get("printable_height") or 0)
     except (TypeError, ValueError):
         max_h = 0
-    height = max(o["_size"][2] for o in objects)
-    if max_h and height > max_h:
-        raise UserError(f"the objects are {height:.0f} mm tall, the printer prints up to {max_h:.0f} mm")
-    for o, w in zip(objects, widths):
-        o["_place"] = (x + w / 2, cy, o["_size"][2] / 2)
-        x += w + gap
+    for o in objects:
+        nozzles = sorted({int(nm[p["filament"] - 1]) - 1 for p in o["parts"]}) if nm else [0]
+        box = list(bed)
+        for i in nozzles:
+            r = reach[min(i, len(reach) - 1)]
+            box = [max(box[0], r[0]), max(box[1], r[1]), min(box[2], r[2]), min(box[3], r[3])]
+        o["_box"] = box
+        o["_right"] = 1 in nozzles and box[0] > bed[0]
+        hs = [per_noz_h[i] for i in nozzles if i < len(per_noz_h)] if nm else []
+        limit = min(hs) if hs else max_h
+        if limit and o["_size"][2] > limit:
+            on = " with the right nozzle" if hs and 1 in nozzles and limit < max_h else ""
+            raise UserError(f"the objects are {o['_size'][2]:.0f} mm tall, the printer prints up to "
+                            f"{limit:.0f} mm{on}")
+    cx, cy = (bed[0] + bed[2]) / 2, (bed[1] + bed[3]) / 2
+    try:
+        tower_y = float((settings.get("wipe_tower_y") or [None])[0])
+    except (TypeError, ValueError):
+        tower_y = None
+    for edge, front, gap in SPACINGS:
+        for o in objects:
+            b = o["_box"]
+            o["_xlim"] = (b[0] + edge, b[2] - edge)
+        y0 = max(o["_box"][1] for o in objects) + front
+        y1 = min(o["_box"][3] for o in objects) - edge
+        alone = [o for o in objects
+                 if o["_size"][0] > o["_xlim"][1] - o["_xlim"][0] or o["_size"][1] > y1 - y0]
+        if alone:
+            if (edge, front, gap) != SPACINGS[-1]:
+                continue
+            o = alone[0]
+            within = (f" within the right nozzle's reach (from x = {o['_box'][0]:g} mm)"
+                      if o["_right"] else "")
+            raise UserError(f"object {safe_text(o['name'])!r} is {o['_size'][0]:.0f} x {o['_size'][1]:.0f} "
+                            f"mm and does not fit on the bed{within}. Scale it down or split it "
+                            "into smaller parts.")
+        if (tower_y is not None and math.isfinite(tower_y) and y0 < tower_y - TOWER_MM < y1
+                and _shelves(objects, y0, tower_y - TOWER_MM, cx, cy, gap)):
+            return []
+        if _shelves(objects, y0, y1, cx, cy, gap):
+            if tower_y is not None and math.isfinite(tower_y) and max(
+                    o["_place"][1] + o["_size"][1] / 2 for o in objects) > tower_y - TOWER_MM:
+                return ["the objects reach back to the prime tower's position: Bambu Studio may move "
+                        "the tower or warn about it; check it in Preview"]
+            return []
+    sizes = ", ".join(f"{o['_size'][0]:.0f} x {o['_size'][1]:.0f}" for o in objects[:8])
+    raise UserError(f"the {len(objects)} objects ({sizes} mm) do not fit on one plate, even in rows. "
+                    "Split them into one 3MF per plate (one job per plate), or build fewer objects "
+                    "and arrange them in Bambu Studio (Arrange, A).")
+
+
+def place_copies(objects: list, quantity: int, settings: dict, nm, report: dict) -> list:
+    """Place `quantity` copies of each object when they fit on the plate, else one copy and
+    a warning that says how to add the others. Sets report['copies']."""
+    if quantity > 1:
+        faces = sum(len(p["f"]) for o in objects for p in o["parts"]) * quantity
+        many = [dict(o, name=o["name"] if c == 0 else f"{o['name']} ({c + 1})")
+                for o in objects for c in range(quantity)]
+        why = None
+        if faces > MAX_COPY_FACES:
+            why = f"{quantity} copies would make the project too large ({faces} triangles)"
+        else:
+            try:
+                report["warnings"].extend(place_objects(many, settings, nm))
+                report["copies"] = {"per_object": quantity, "design_quantity": quantity}
+                return many
+            except UserError:
+                why = f"{quantity} copies of each object do not fit on one plate"
+        report["warnings"].append(
+            f"design.quantity is {quantity}, but {why}: the project holds one copy of each object. "
+            f"In Bambu Studio select the object, add {quantity - 1} copies with + and press Arrange (A); "
+            "print the copies that do not fit as a second plate. The design's estimate is for "
+            f"{quantity} copies, so the comparison uses it per copy (estimate / {quantity}).")
+    report["warnings"].extend(place_objects(objects, settings, nm))
+    report["copies"] = {"per_object": 1, "design_quantity": quantity}
+    return objects
 
 
 def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
@@ -811,7 +1007,6 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
         objects.append({"name": str(obj.get("name") or job["name"]), "parts": parts,
                         "_centre": [(lo[k] + hi[k]) / 2 for k in range(3)],
                         "_size": [hi[k] - lo[k] for k in range(3)]})
-    place_objects(objects, settings)
 
     # settings: the template, code keys from the official presets, then the job's choices
     s = dict(settings)
@@ -857,6 +1052,7 @@ def build_project(job: dict, settings: dict, flat: dict | None, report: dict,
     version = str(s.get("version") or "")
     if not re.fullmatch(r"[0-9.]{1,20}", version):
         raise UserError("template has no Bambu Studio version")
+    objects = place_copies(objects, job.get("_quantity", 1), s, nm, report)
     report["warnings"].extend(w for w in design_warnings(job, s, nm) if w not in report["warnings"])
 
     files = {}
@@ -1100,7 +1296,7 @@ def summarise_slice(result: dict, gcode, settings: dict, fmap) -> dict:
             per_kg = float(costs[i - 1])
         except (IndexError, TypeError, ValueError):
             per_kg = None
-        fil.append({"filament": i, "colour": colours[i - 1] if i - 1 < len(colours) else "?",
+        fil.append({"filament": i, "colour": safe_colour(colours[i - 1] if i - 1 < len(colours) else None),
                     "nozzle": (("left" if fmap[i - 1] == "1" else "right") if fmap else None),
                     "model_g": round(f.get("main_used_g", 0), 2), "total_g": total_g,
                     "length_m": round(mm / 1000, 2) if mm is not None else None,
@@ -1154,8 +1350,9 @@ def colour_advice(r: dict, settings: dict, fmap) -> list:
         shared = [f for f in used if f is not heavy and f["nozzle"] == heavy["nozzle"]]
         other = [f for f in used if f["nozzle"] != heavy["nozzle"]]
         if shared and len(other) == 0:
-            adv.append(f"All colours use the {heavy['nozzle']} nozzle. Put the main colour "
-                       f"(filament {heavy['filament']}) on the other nozzle: a nozzle switch costs no purge.")
+            adv.append(f"All colours use the {heavy['nozzle']} nozzle. If the other nozzle is free "
+                       f"(for the right one, the external spool holder), put the main colour (filament "
+                       f"{heavy['filament']}) there: a nozzle switch costs no purge.")
     return adv
 
 
@@ -1192,6 +1389,8 @@ def cmd_studio(a):
     out = dict(studio_paths(a.studio))
     others = other_slicers()
     out["other_slicers"] = others
+    # the rule holds even with no other slicer installed (one may be installed later)
+    out["open_projects"] = "from Bambu Studio with File, Open project, never by double-clicking them"
     if others:
         out["warning"] = ("Other slicers are installed (" + ", ".join(others) + "). A double "
                           "click on a .3mf may open it in one of them, which rewrites it for "
@@ -1205,14 +1404,15 @@ def cmd_templates(a):
     items = [(pathlib.Path(p), "given") for p in a.paths] or candidate_templates(paths)
     out = []
     for p, origin in items:
+        shown = safe_text(str(p), 300)
         try:
-            row = {"path": str(p), "origin": origin, **describe_template(read_template(p))}
+            row = {"path": shown, "origin": origin, **describe_template(read_template(p))}
             note = built_project_note(p)
             if note:
-                row["warning"] = note
+                row["warning"] = safe_text(note, 400)
             out.append(row)
         except (UserError, ValueError, zipfile.BadZipFile) as e:
-            out.append({"path": str(p), "origin": origin, "error": str(e)})
+            out.append({"path": shown, "origin": origin, "error": safe_text(str(e), 600)})
     _print(out)
 
 
@@ -1284,19 +1484,39 @@ def _drift(real, est):
     return round((real - est) / est * 100)
 
 
-def comparison_row(name: str, about, output: str, est, chk) -> dict:
+def scaled_estimate(est: dict, factor: float) -> dict:
+    """The estimate's grams, metres and minutes times `factor` (copies placed / design.quantity)."""
+    out = {}
+    for k in ("grams", "model_g", "metres"):
+        v = est.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = round(v * factor, 2)
+    rng = _minutes_range(est)
+    if rng:
+        out["minutes"] = [round(rng[0] * factor, 1), round(rng[1] * factor, 1)]
+    return out
+
+
+def comparison_row(name: str, about, output: str, est, chk, copies: int = 1, quantity: int = 1) -> dict:
     """One version: real numbers from the check next to the design's estimate.
 
     The design's `grams` count model plus purge (3d-print-design estimate.py), so they are
     compared with total_g; `model_g` with model_g. Minutes are a range: the drift is 0 inside
-    it, else measured from the nearest end."""
+    it, else measured from the nearest end. The estimate is for `quantity` copies
+    (design.quantity); when the project holds a different number of `copies`, it is scaled
+    to them (per copy when only one is placed), so the drift is not an artefact."""
     chk = chk or {}
     est = est if isinstance(est, dict) else {}
     row = {"version": name, "about": about if isinstance(about, str) else "", "output": output,
            "time": chk.get("estimated_time"), "time_s": chk.get("time_s"), "model_g": chk.get("model_g"),
            "purge_g": chk.get("waste_g"), "total_g": chk.get("total_g"), "metres": chk.get("metres"),
            "cost": chk.get("cost"), "filament_changes": chk.get("filament_changes"), "estimate": est,
-           "drift_pct": {}}
+           "copies": copies, "drift_pct": {}}
+    if quantity > 1 and copies != quantity and est:
+        est = scaled_estimate(est, copies / quantity)
+        row["estimate_compared"] = est
+        row["compared_as"] = (f"design estimate for {quantity} copies, scaled to the {copies} "
+                              f"cop{'y' if copies == 1 else 'ies'} on the plate")
     rng = _minutes_range(est)
     if rng and chk.get("time_s") is not None:
         real = chk["time_s"] / 60
@@ -1318,13 +1538,13 @@ def comparison_table(rows: list) -> str:
 
     def pct(v):
         return "" if v is None else f"{v:+d}%"
-    head = ["version", "time", "model g", "purge g", "total g", "metres", "cost", "changes",
+    head = ["version", "copies", "time", "model g", "purge g", "total g", "metres", "cost", "changes",
             "design g", "design min", "drift g", "drift min"]
     lines = []
     for r in rows:
-        e = r["estimate"]
+        e = r.get("estimate_compared", r["estimate"])
         rng = _minutes_range(e)
-        lines.append([r["version"], r["time"] or "?", cell(r["model_g"]), cell(r["purge_g"]),
+        lines.append([r["version"], cell(r.get("copies", 1)), r["time"] or "?", cell(r["model_g"]), cell(r["purge_g"]),
                       cell(r["total_g"]), cell(r["metres"]), cell(r["cost"], "{:.2f}"),
                       cell(r["filament_changes"]), cell(e.get("grams")),
                       "" if not rng else (f"{rng[0]:g}" if rng[0] == rng[1] else f"{rng[0]:g}-{rng[1]:g}"),
@@ -1403,7 +1623,9 @@ def cmd_build(a):
         else:
             name, est, about = v["name"], v.get("estimate"), v.get("about")
         if a.variants or (a.check and isinstance(est, dict)):
-            rows.append(comparison_row(name, about, report.get("output", ""), est, chk))
+            copies = report.get("copies") or {}
+            rows.append(comparison_row(name, about, report.get("output", ""), est, chk,
+                                       copies.get("per_object", 1), job.get("_quantity", 1)))
     result = planned[0][4]
     result["template_path"] = str(tpl)
     if a.variants:

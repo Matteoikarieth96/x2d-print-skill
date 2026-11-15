@@ -34,6 +34,7 @@ What the skill reads, runs and writes, and what could be hostile:
 | XML injection through part or object names | Names are escaped; every XML file is parsed before the `.3mf` is written | `scripts/bambu_project.py` (`build_project`) |
 | Overwriting other files | The output must end in `.3mf`, stay inside the job's folder after resolving symlinks, differ from the template (also through a hard link or a different letter case), and replace an existing file only with `--force`; a symlink as output is refused | `scripts/bambu_project.py` (`output_path`) |
 | Malformed inputs | Non-finite STL coordinates, objects taller than the printer and malformed job files stop with a plain error | `scripts/bambu_project.py` |
+| Instructions or control characters in template strings (a downloaded `.3mf`) | Strings that `templates` and the build report print from a template or project (printer, process, plate, preset and material names, version, the `Application` name in error messages) lose control and invisible characters and are cut to 80 characters; colours are printed only as `#RRGGBB` or `#RRGGBBAA` | `scripts/bambu_project.py` (`safe_text`, `safe_colour`, `describe_template`, `origin_problem`) |
 | Leaking printer access codes | Only `recent_projects` and `app.last_backup_path` are read from `BambuStudio.conf`; nothing else is printed | `scripts/bambu_project.py` (`candidate_templates`) |
 | Shell injection | Bambu Studio is started with an argument list, never through a shell | `scripts/bambu_project.py` (`_run_studio`) |
 
@@ -47,7 +48,8 @@ Tests for these cases: `tests/test_bambu_project.py`.
 - `check` slices with the Bambu Studio installed on your computer. A bug in Bambu Studio
   itself is outside this project.
 - The `.3mf` is a regular project file: anyone who edits it afterwards can change it.
-  Open it in Bambu Studio and look at the preview before you print.
+  Open it in Bambu Studio with File, Open project, and look at the preview before you
+  print.
 
 ## Reporting a vulnerability
 

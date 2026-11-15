@@ -27,6 +27,11 @@ describe what to look for rather than insisting on the exact word. Sources at th
 Ask which applies; if unsure, recommend the account route for a home or a shared space
 where several people print, and LAN only where cloud accounts are not wanted.
 
+**A shared printer** (a lab's or a makerspace's X2D) is already set up by someone: do not
+change its LAN Only mode or its account binding, which would cut off everyone else. Ask
+the person who manages the printer how to connect (which account to log in with, or the
+IP and access code they hand out), then go to the Device tab check.
+
 | Route | Good for | What it needs | What you lose |
 |---|---|---|---|
 | **Bambu account (cloud)** | most people; phone app too | a Bambu account, internet | nothing |
@@ -47,6 +52,9 @@ into Bambu Studio themselves. You never ask for it, read it or type it.
 4. Open the **Device** tab: the X2D appears with its temperatures, camera and AMS.
 
 ### Route B: LAN only
+
+Only on a printer that is yours, or with the agreement of whoever manages it: on a shared
+printer, do not turn LAN Only on or off, and do not unbind or rebind its account.
 
 1. On the printer screen: Settings, then **LAN Only** (on the X2D it is in the settings
    / network area of the touchscreen). Turn it on. The same page shows the **IP** and
@@ -108,22 +116,26 @@ The person does this, with you explaining:
    and check.
 2. **Check the colours:** the filament list on the left shows the colours; each part in
    the Objects list shows its filament number. Press Sync if the AMS changed. The colour
-   of each part on the plate must be the one you planned. To fill the plate, select the
-   object, add copies with `+` and press **Arrange** (`A`).
+   of each part on the plate must be the one you planned. To fill the plate (or to add
+   the copies the build could not place), select the object, add copies with `+` and
+   press **Arrange** (`A`).
 3. **Plate type:** the plate shown at the top of the filament area must be the one really
    on the printer (Textured PEI by default on the X2D).
 4. **Slice plate** (top right).
 5. **Preview** tab: drag the layer slider to the first layers; check the colour panel
    (grams per colour, purge, number of changes, time) against the numbers in the guide.
    A much bigger purge or more changes than the guide says means a colour moved.
-6. **Print plate**. In the send dialog: check that every filament points to the right
+6. **Prepare the printer**: open the door and look at the plate. It must be empty (no
+   parts or strings left by someone else), clean, and sitting against its stops at the
+   back. On a shared printer, ask before removing someone else's print.
+7. **Print plate**. In the send dialog: check that every filament points to the right
    AMS slot or to the external spool (left and right nozzle), leave bed levelling and
    flow calibration on Auto, timelapse as they like, then **Send**: the print starts
    right away. To start it from the printer screen instead (for example when the
    computer is in another room), the arrow next to **Print plate** offers **Send**,
    which only uploads the file to the printer's storage; the person starts it on the
    touchscreen, standing at the printer, after checking the colours it shows.
-7. **Stay by the printer for the first layer** (the first 5 to 10 minutes). If the first
+8. **Stay by the printer for the first layer** (the first 5 to 10 minutes). If the first
    layer does not stick or the nozzle drags, stop from the screen or the Device tab.
 
 ## Sources

@@ -18,6 +18,8 @@ which {{PURGE_GRAMS}} g is purge, **{{CHANGES}} colour changes**.
 - The printer must appear in Bambu Studio's **Device** tab. If it does not, connect it
   first (Bambu account, or LAN Only with the IP and access code shown on the printer
   screen). You type the access code yourself; do not give it to anyone.
+- **Shared printer** (for example a lab's X2D): do not change its LAN Only mode or the
+  account it is bound to. Ask the person who manages the printer how to connect.
 - The nozzle reaches 300 °C and the bed 120 °C: keep hands away from the toolhead and the
   bed while it runs.
 
@@ -47,15 +49,18 @@ which {{PURGE_GRAMS}} g is purge, **{{CHANGES}} colour changes**.
    the filament panel: time, grams and colour changes should be close to the numbers
    above (higher if you added copies). Much more means a colour ended up on the wrong
    nozzle.
-8. **Send it.** Press **Print plate**. In the dialog, check line by line that every
+8. **Prepare the printer.** Open the door and look at the plate: it must be empty (no
+   parts or strings left by others), clean, and sitting against its stops at the back.
+   If someone else's print is still there, ask before taking it off.
+9. **Send it.** Press **Print plate**. In the dialog, check line by line that every
    filament points to the right AMS slot or to the external spool (left and right
    nozzle). Leave bed levelling and flow calibration on Auto. Press **Send**: the print
    starts right away. To start it from the printer screen instead, use the arrow next to
    **Print plate**, then **Send**: the file goes to the printer's storage without
    starting, and you start it on the screen, checking the colours there.
-9. **Stay at the printer for the first layer** (5 to 10 minutes, see below). If the plastic does not
+10. **Stay at the printer for the first layer** (5 to 10 minutes, see below). If the plastic does not
    stick or the nozzle drags, stop the print from the screen or the Device tab.
-10. **When it is done**, wait until the plate is cold, take it out, flex it gently and the
+11. **When it is done**, wait until the plate is cold, take it out, flex it gently and the
    part comes off. Remove the prime tower and purge line, put the plate back against its
    stops.
 

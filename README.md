@@ -6,6 +6,8 @@ your own Bambu Studio, checked by slicing it locally. Then it walks you, even if
 never printed before, through opening the file, checking the colours, slicing and sending
 the print.
 
+First print from zero? The [Urbe X2D starter kit](https://github.com/Matteoikarieth96/urbe-x2d-starter-kit) installs this skill and 3d-print-design together.
+
 It also applies multicolour best practices so you do not throw away more plastic than you
 print: dominant colour on its own nozzle, accent colours in few layers, one plate per
 group of objects that would keep swapping colours.
@@ -16,9 +18,10 @@ group of objects that would keep swapping colours.
 
 ## What you get
 
-- `out/<name>.3mf`: open it from Bambu Studio (File, Open project) and it comes with
-  printer, plate, colours, nozzles and process already set. Do not double-click it if
-  another slicer is installed: see [When things go wrong](#when-things-go-wrong).
+- `out/<name>.3mf`: it comes with printer, plate, colours, nozzles and process already
+  set, and with as many copies as the design asked for when they fit on the plate.
+  Open it from Bambu Studio with File, Open project, never by double-clicking it
+  (another slicer may open and rewrite it): see [When things go wrong](#when-things-go-wrong).
 - A short guide in your language with the filament table, the expected time and grams,
   and the steps: sync AMS colours, check, slice, send, stay for the first layer.
 - A check report: estimated time, colour changes per layer, grams of model and purge
@@ -113,7 +116,9 @@ Threat model and how to report a problem: [SECURITY.md](SECURITY.md).
 
 ## Limitations
 
-- One plate per project. For several plates, make one job and one `.3mf` per plate.
+- One plate per project. Objects are laid out in rows; when they do not fit, make one
+  job and one `.3mf` per plate. When the design's copies do not fit, the project holds
+  one copy and you add the others in Bambu Studio (`+`, then Arrange).
 - One STL per colour. A single multicolour STL must be split first, or painted by hand
   in Bambu Studio.
 - Tested on the X2D with Bambu Studio 2.9.1 on macOS. The Windows and Linux paths follow

@@ -57,12 +57,23 @@ Every XML entry is parsed back before the zip is written.
 ## Placement
 
 Each object is centred on its own bounding box, laid on the bed (lowest point at z = 0)
-and placed in a row across the printable area, away from the prime tower position. If the
-row does not fit, the build stops and says so: split the job into plates.
+and placed with a simple shelf packing: deepest objects first, left to right in a row,
+a new row behind when the next one does not fit, the whole block centred on the plate.
+Rows stay in front of the prime tower position when they can (10 mm gaps, 5 mm from the
+edges, 10 mm from the front edge where the purge line runs); if not, a tighter spacing
+and the whole depth are tried, with a note that the tower may move. If they still do not
+fit, the build stops and says so: one 3MF per plate, or arrange them in Bambu Studio.
 
-Placement uses the whole plate's printable area. The X2D's right nozzle has a smaller
-one (it cannot reach the 20.5 mm at the left edge and prints 5 mm lower); a part on that
-nozzle placed in the strip makes the check fail with Bambu Studio's out-of-area message.
+The X2D's right nozzle reaches less of the plate (it cannot print the 20.5 mm strip at
+the left edge, and prints 5 mm lower). An object with a part on that nozzle is kept
+inside its reach, read from `extruder_printable_area` and `extruder_printable_height`
+(20.5 mm when the template does not say), and right-nozzle objects go to the right end
+of their row.
+
+With `design.quantity` N above 1, N copies of each object are placed when they fit
+(and the project stays under a million triangles); otherwise one copy, and the build
+output says to add N-1 copies with `+` and Arrange. The `--variants` comparison then
+measures the drift against the design's estimate per copy (estimate / N).
 
 ## The check
 
@@ -118,7 +129,7 @@ same layer count, changes, grams and time as the same parts set up by hand in th
 ## Limits
 
 - One plate per 3MF. For two plates, two job files.
-- Each job object is placed once, in a row. To fill the plate, the person adds copies in
+- Each job object is placed once (or `design.quantity` times when the copies fit), in rows. To fill the plate, the person adds copies in
   Bambu Studio (`+`, then Arrange with `A`); the check's numbers are for the job as built.
 - STL only (binary or ASCII); one STL per colour. Painted single-mesh models are not
   supported.

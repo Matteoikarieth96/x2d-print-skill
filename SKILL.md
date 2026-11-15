@@ -65,9 +65,13 @@ its profiles are. If anything is `null`, or the person has never connected the p
 follow [references/setup.md](references/setup.md) with them, one step at a time: install
 from the official sites only, first-run wizard, the connection choice (account, LAN only,
 or USB stick), and the first checks. Wait for each "done" before the next step.
-If it prints a `warning` about other slicers (QIDI Studio, OrcaSlicer, ...), tell the
-person now: the project must be opened from Bambu Studio with File, Open project, never
-with a double click, or that other program may open and rewrite it for its own printer.
+Always tell the person the rule, whatever `studio` prints: the project is opened from
+Bambu Studio with **File, Open project**, never by double-clicking it. If it prints a
+`warning` about other slicers (QIDI Studio, OrcaSlicer, ...), add the reason: a double
+click may open the file in that program, which rewrites it for its own printer.
+If the printer is **shared** (a lab's or a makerspace's X2D), the person does not change
+its LAN Only mode or its account binding: they ask whoever manages the printer how to
+connect (setup.md, section 2).
 
 ## Step 3: load the spools, then save the settings template (once per AMS change)
 
@@ -84,8 +88,9 @@ Read `design.suggested_nozzles` in `x2d-job.json` (without one, apply
   STL's `colour` in `objects`.
 - In the usual X2D Combo setup the AMS feeds the left nozzle and the **external spool
   holder** feeds the right one. So a colour marked `right` goes on the external holder,
-  every `left` colour goes in an AMS slot. All `left` (one colour, colours by height, or
-  TPU): nothing goes on the external holder.
+  every `left` colour goes in an AMS slot. All `left` (one colour, colours by height, TPU,
+  or a design made without the external holder): nothing goes on the external holder,
+  and a job with every part on the left nozzle is fine.
 - An AMS can also feed the right nozzle (a second AMS, or Bambu's filament track
   switch): then ask which nozzle each AMS slot feeds and plan from that.
 
@@ -168,8 +173,13 @@ filling it once is enough.
   height, supports) as Bambu Studio strings. Leave them: the estimate is for them.
 - `variants` (format 2, optional): other versions of the same design. Leave them.
 - Check that the template's filaments are the `design.material`. The build also warns
-  when the template's layer height, material or nozzle differ from the design, or when
-  `nozzles` goes against `design.suggested_nozzles`.
+  when the template's layer height, material or nozzle differ from the design. When
+  `nozzles` goes against `design.suggested_nozzles` it says so as advice: the design
+  picked the faster plan, but the person's setup wins (for example no external spool
+  holder free). Keep their choice and say why, or follow the design and rebuild.
+- `design.quantity` (format 2): the design's estimate is for that many copies. The build
+  places that many copies of each object on the plate when they fit; otherwise the
+  project holds one copy and the build says so in `warnings` (Step 6).
 
 The script ignores the rest of the `design` block and refuses the job while a
 `filament` is still empty.
@@ -211,8 +221,11 @@ when the check passes: a failed check leaves no new file (and an older one untou
 and the error names the job settings that differ from the template, since one of them
 may be the cause. Read every line of `warnings`, `check.advice` and
 `check.studio_warnings` (Bambu Studio's own warnings). Change the job (nozzles, plates,
-settings) and rebuild until they are acceptable; say which ones you accepted and why. If
-the object does not fit the plate, the script says so.
+settings) and rebuild until they are acceptable; say which ones you accepted and why.
+Objects are laid out in rows, in front of the prime tower when there is room, and parts
+on the right nozzle stay inside its reach. If they still do not fit, the script says so:
+split them into one job and one 3MF per plate, or build fewer and arrange the rest in
+Bambu Studio.
 
 What `check` reports: `estimated_time` (Bambu Studio's text, such as `38m 12s`) and
 `time_s`; `filament_changes`; `model_g`, `waste_g` (purge) and `total_g`; `metres` and
@@ -236,12 +249,15 @@ its `stl` replacements, the same filament numbers and nozzles. They are sliced o
 another. The JSON gets `comparison` and `table` (also printed as plain text): per
 version the time, model, purge and total grams, metres, cost, colour changes, and the
 design's estimate with the drift in % (grams against total grams; minutes against the
-estimated range, `in range` when inside). A variant that fails to slice is listed in
-`failed_variants` with its `error` and gets no file; the others are kept.
+estimated range, `in range` when inside). When the plate holds fewer copies than
+`design.quantity`, the estimate is compared per copy (`estimate_compared`, `compared_as`
+and the `copies` column), so the drift is real. A variant that fails to slice is listed
+in `failed_variants` with its `error` and gets no file; the others are kept.
 
-For a beginner, say it simply: "The design skill gave you three versions. Sliced for
-real: light 41 minutes and 12 g, standard 52 minutes and 16 g, strong 1 h 10 and 23 g.
-Which one?" Add one line on what differs (`about`). Then hand over only the file they
+For a beginner, say it simply, with the real numbers from `table`. Illustrative example
+only, not data: "The design skill gave you three versions. Sliced for real: light X
+minutes and Y g, standard ..., strong .... Which one?" Add one line on what differs
+(`about`). Then hand over only the file they
 pick (Step 6) and say the others can be deleted.
 
 ## Step 6: hand over
@@ -267,9 +283,16 @@ Give the person:
    as "AMS slot 2" or "external spool". If they did not say, write "check on the printer
    screen": never infer a slot from the filament number.
 3. The safety points from [references/safety.md](references/safety.md) that apply.
+4. **Copies:** if `warnings` says `design.quantity` is N but the project holds one copy,
+   tell the person: in Bambu Studio select the object, add N-1 copies with `+`, press
+   **Arrange** (`A`), and print what does not fit as a second plate. Time and grams then
+   grow beyond the guide's numbers. When `copies.per_object` equals the quantity, the
+   plate already holds them all.
 
-Say plainly that you did not slice it for printing or send it: they open it, slice it and
-press Print in Bambu Studio themselves, and stay by the printer for the first layer.
+Say plainly that you did not slice it for printing or send it: they open it from Bambu
+Studio with File, Open project (never by double-clicking it), slice it, check that the
+plate is empty, clean and against its stops, press Print themselves, and stay by the
+printer for the first layer.
 
 ## When things go wrong
 
@@ -286,8 +309,12 @@ press Print in Bambu Studio themselves, and stay by the printer for the first la
   setting from the job, or ask the person to save a new template as in Step 3.
 - The check fails, or Bambu Studio warns, that a part is outside a nozzle's printable
   area: the right nozzle cannot reach a 20.5 mm strip at the left edge of the plate
-  (it covers 235.5 of the 256 mm) and prints 5 mm lower. Split the job so fewer
-  objects share the row, or move that colour to the left nozzle, then rebuild.
+  (it covers 235.5 of the 256 mm) and prints 5 mm lower. The build keeps parts on the
+  right nozzle out of that strip (from `extruder_printable_area`); if Bambu Studio still
+  complains, split the job into fewer objects per plate, or move that colour to the left
+  nozzle, then rebuild.
+- "do not fit on one plate, even in rows": one job and one 3MF per plate, or fewer
+  objects and the rest arranged in Bambu Studio (Arrange, `A`).
 - Parts show on the wrong nozzle after opening, or Bambu Studio has regrouped the
   filaments: the filament grouping must stay **Custom Mode**, as the project was saved
   (Bambu Studio 02.09 shows Filament-Saving Mode, Convenience Mode and Custom Mode; the

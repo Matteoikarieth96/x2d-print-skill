@@ -18,6 +18,9 @@ filamento, di cui {{GRAMMI_SPURGO}} g di spurgo, **{{CAMBI}} cambi colore**.
 - La stampante deve comparire nella scheda **Device** di Bambu Studio. Se non c'è, prima
   va collegata (account Bambu, oppure LAN Only con IP e codice di accesso letti sullo
   schermo della stampante). Il codice di accesso lo scrivi tu, non lo dai a nessuno.
+- **Stampante condivisa** (per esempio la X2D di un laboratorio): non cambiare la modalità
+  LAN Only né l'account a cui è collegata. Chiedi a chi gestisce la stampante come
+  collegarti.
 - Ugello e piatto arrivano a 300 °C e 120 °C: mani lontane da testina e piatto mentre
   lavora.
 
@@ -47,16 +50,19 @@ filamento, di cui {{GRAMMI_SPURGO}} g di spurgo, **{{CAMBI}} cambi colore**.
    controlla i numeri del pannello dei filamenti: tempo, grammi e cambi colore devono
    essere vicini a quelli scritti sopra (più alti se hai aggiunto copie). Molto di più
    vuol dire che un colore è finito sull'ugello sbagliato.
-8. **Manda in stampa.** Premi **Stampa piatto**. Nella finestra che si apre controlla
+8. **Prepara la stampante.** Apri lo sportello e guarda il piatto: deve essere vuoto
+   (nessun pezzo o filo lasciato da altri), pulito e appoggiato contro i suoi fermi in
+   fondo. Se c'è ancora la stampa di qualcun altro, chiedi prima di toglierla.
+9. **Manda in stampa.** Premi **Stampa piatto**. Nella finestra che si apre controlla
    riga per riga che ogni filamento punti allo slot giusto dell'AMS o alla bobina esterna
    (ugello sinistro e destro). Lascia livellamento del piatto e calibrazione del flusso su
    Auto. Premi **Invia**: la stampa parte subito. Se preferisci avviarla dallo schermo
    della stampante, usa invece la freccia accanto a **Stampa piatto**, poi **Invia**
    (Send): il file arriva nella memoria della stampante senza partire, e lo avvii dallo
    schermo, controllando lì i colori.
-9. **Resta davanti alla stampante per il primo strato** (5-10 minuti, vedi sotto). Se il filo non
+10. **Resta davanti alla stampante per il primo strato** (5-10 minuti, vedi sotto). Se il filo non
    attacca o l'ugello trascina, ferma la stampa dallo schermo o dalla scheda Device.
-10. **A fine stampa** aspetta che il piatto sia freddo, toglilo, flettilo piano e il pezzo
+11. **A fine stampa** aspetta che il piatto sia freddo, toglilo, flettilo piano e il pezzo
    si stacca. Togli torre di spurgo e linea di spurgo, rimetti il piatto contro i suoi
    fermi.
 
