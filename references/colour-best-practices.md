@@ -58,9 +58,23 @@ part.
    flush than white to black. Bambu Studio orders the colours inside each layer to save
    flush, but white or yellow details sharing a nozzle with a dark colour still cost the
    most: that pair is the first to split across the two nozzles.
-10. **Leave the prime tower on** with several colours: it stabilises the nozzle after a
-    change. **Flush into support** is on by default; **flush into infill** is fine only
-    for opaque parts where the mixed colour hidden inside does not matter.
+10. **Prime tower: on, except for a few colour changes by height.** The tower wipes the
+    nozzle and steadies its pressure after a change. It is always printed **from the first
+    layer up to the layer of the last colour change**, even when there is only one change
+    and it sits at the top: a lettering or logo on the last layers of a 20 mm part makes a
+    20 mm tower. Measured on a 20.7 mm cap with a logo in the last 6 layers (one change at
+    layer 107 of 112, one nozzle): with the tower 6.8 g in all (3.2 g of model, 3.6 g of
+    purge, tower about 6 min) and 25 min 33 s; without it 3.8 g (0.7 g of flush) and 23 min
+    42 s. So when the colours change **only by height, on one nozzle, at most 3 times, high
+    up** (the check's advice says so), set `"enable_prime_tower": "0"` in the job's
+    `settings` and tell the person why. The flush still goes into the purge chute; the cost
+    is at most a small blob or a thin start on the first layer of the new colour. Keep the
+    tower with nozzle switches (it primes the nozzle that was idle), with colours that meet
+    in many layers, and on a first multicolour print where looks matter most. A change in
+    the first few layers makes a short tower: leave it. Smooth-mode timelapse also builds a
+    tower, as tall as the part, even with one colour. **Flush into support** is on by
+    default; **flush into infill** is fine only for opaque parts where the mixed colour
+    hidden inside does not matter.
 11. **Flush multiplier stays at 1.0.** 0.8 to 0.9 can be tested on a scrap print once the
     person knows what colour bleeding looks like; never on a first print.
 12. **Zero flush option:** print each colour as a separate part and glue them.
@@ -95,7 +109,8 @@ re-calculate option.
 | purge more than the part | normal on small parts | fewer colours or colour layers, or several copies per plate |
 | several objects share the plate | objects make each other change colour | one plate (one 3MF) per object group |
 | different materials | poor bonding | one material |
-| prime tower off | risky colour changes | turn it on |
+| prime tower off | risky colour changes (not given for a few changes by height on one nozzle) | turn it on |
+| prime tower printed up to layer N for only K changes | colours change only by height, high up: the tower is mostly waste | `"enable_prime_tower": "0"` in the job's settings, rebuild |
 
 ## Sources
 

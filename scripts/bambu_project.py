@@ -1346,6 +1346,23 @@ def many_swap_layers(r: dict) -> bool:
     return bool(r.get("swaps_same_nozzle", 0)) and r.get("layers_with_swaps", 0) > layers * 0.3
 
 
+TOWER_SKIP_LAYER = 10      # a tower that must rise to this layer or higher for a few changes is worth skipping
+TOWER_MAX_CHANGES = 3      # "few changes": colours by height, at most this many, one per layer
+
+
+def few_changes_by_height(r: dict) -> int:
+    """The layer of the last colour change when the colours change only by height on one nozzle
+    (no nozzle switches, at most TOWER_MAX_CHANGES changes, never two in the same layer), else 0.
+    That is the case where the prime tower can be left out (colour-best-practices.md, rule 10)."""
+    per_layer = r.get("changes_per_layer") or {}
+    changes = r.get("filament_changes")
+    if r.get("nozzle_switches") or not per_layer or not changes or changes > TOWER_MAX_CHANGES:
+        return 0
+    if r.get("layers_with_swaps", 0) > TOWER_MAX_CHANGES or any(len(v) > 1 for v in per_layer.values()):
+        return 0
+    return max(int(k) for k in per_layer)
+
+
 def colour_advice(r: dict, settings: dict, fmap) -> list:
     """Plain-language warnings from the colour best practices (references/colour-best-practices.md)."""
     adv = []
@@ -1354,8 +1371,18 @@ def colour_advice(r: dict, settings: dict, fmap) -> list:
     used_types = {types[f["filament"] - 1] for f in used if f["filament"] - 1 < len(types)}
     if len(used_types) > 1:
         adv.append(f"Different materials in one print ({', '.join(sorted(used_types))}): they may not stick to each other.")
-    if len(used) > 1 and settings.get("enable_prime_tower") == "0":
+    tower_off = settings.get("enable_prime_tower") == "0"
+    by_height = few_changes_by_height(r)
+    if len(used) > 1 and tower_off and not by_height:
         adv.append("Prime tower is off with several colours: turn it on unless you know why it is off.")
+    if len(used) > 1 and not tower_off and by_height and by_height >= TOWER_SKIP_LAYER:
+        n = r.get("filament_changes") or 1
+        adv.append(f"The prime tower is printed from the first layer up to layer {by_height} for only "
+                   f"{n} colour change{'s' if n > 1 else ''} on one nozzle"
+                   + (f" (about {round(r['prime_tower_time_s'] / 60)} min)" if r.get("prime_tower_time_s") else "")
+                   + ". Colours change only by height here: turn it off with \"enable_prime_tower\": \"0\" in "
+                   "the job's settings. The flush still goes into the purge chute; at worst the first layer "
+                   "of the new colour shows a small blob or a thin start.")
     many = many_swap_layers(r)
     with_swaps, layers = r.get("layers_with_swaps", 0), max(r.get("layers") or 1, 1)
     if many:

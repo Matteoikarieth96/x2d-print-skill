@@ -235,6 +235,13 @@ Bambu Studio); per filament the same plus `nozzle` and `length_m`; `flush_time_s
 flush plus prime tower together; Bambu Studio's Preview panel shows them apart
 ("Flushed" and "Tower"), so tell the person their sum is the guide's purge.
 
+**Prime tower:** it is printed from the first layer up to the last colour change, so a
+single change near the top (a logo on the last layers) builds a tall tower that is mostly
+waste. When `check.advice` says so (colours only by height, one nozzle, at most 3 changes,
+high up), add `"enable_prime_tower": "0"` to the job's `settings`, rebuild with `--force`,
+and tell the person in one sentence why the tower is gone. Keep it otherwise
+([references/colour-best-practices.md](references/colour-best-practices.md), rule 10).
+
 ### Versions to compare (`variants`)
 
 If the job has `variants`, a plain build says so in `warnings`. Build them all with:

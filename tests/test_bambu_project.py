@@ -676,6 +676,41 @@ class TestAdviceByHeight(unittest.TestCase):
         self.assertIn("other nozzle", adv)
 
 
+class TestTowerByHeight(unittest.TestCase):
+    def report(self, per_layer, changes, switches=0, tower_s=342):
+        return {"filaments": [{"filament": 5, "model_g": 3.1, "total_g": 6.1, "nozzle": "left"},
+                              {"filament": 4, "model_g": 0.1, "total_g": 0.7, "nozzle": "left"}],
+                "layers": 112, "changes_per_layer": per_layer, "filament_changes": changes,
+                "swaps_same_nozzle": 0, "nozzle_switches": switches, "layers_with_swaps": 0,
+                "prime_tower_time_s": tower_s, "model_g": 3.2, "waste_g": 3.6}
+
+    def test_high_single_change_suggests_tower_off(self):
+        # the Urbe cap: one change at layer 107, the tower rose 107 layers for it
+        adv = " ".join(bp.colour_advice(self.report({"107": [4]}, 1), template_settings(), ["1", "1"]))
+        self.assertIn("up to layer 107", adv)
+        self.assertIn('"enable_prime_tower": "0"', adv)
+
+    def test_tower_off_by_height_is_not_flagged(self):
+        adv = " ".join(bp.colour_advice(self.report({"107": [4]}, 1),
+                                        template_settings(enable_prime_tower="0"), ["1", "1"]))
+        self.assertNotIn("Prime tower is off", adv)
+        self.assertNotIn("enable_prime_tower", adv)
+
+    def test_low_change_keeps_tower(self):
+        adv = " ".join(bp.colour_advice(self.report({"4": [4]}, 1), template_settings(), ["1", "1"]))
+        self.assertNotIn("enable_prime_tower", adv)
+
+    def test_nozzle_switch_keeps_tower(self):
+        r = self.report({"50": [4]}, 1, switches=1)
+        self.assertEqual(bp.few_changes_by_height(r), 0)
+        adv = " ".join(bp.colour_advice(r, template_settings(enable_prime_tower="0"), ["1", "2"]))
+        self.assertIn("Prime tower is off", adv)
+
+    def test_many_changes_keep_tower(self):
+        r = self.report({str(k): [4 if k % 2 else 5] for k in range(20, 40)}, 20)
+        self.assertEqual(bp.few_changes_by_height(r), 0)
+
+
 class TestDesignWarnings(Base):
     def test_layer_material_nozzle_and_suggested_nozzles(self):
         job = self.job(design={"format": 2, "layer_mm": 0.28, "material": "PETG", "nozzle_mm": 0.6,
