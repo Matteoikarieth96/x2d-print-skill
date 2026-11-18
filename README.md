@@ -166,6 +166,7 @@ gh workflow run sync.yml -R urbe-hub/urbe-x2d-starter-kit
 - [beer-can-label](https://github.com/Matteoikarieth96/beer-can-label-skill): a print-ready beer can label with a 3D can preview
 - [claude-time-is-relative](https://github.com/Matteoikarieth96/claude-time-is-relative): time estimates for Claude Code tasks, learned from your own past sessions
 - [ai-privacy-check](https://github.com/Matteoikarieth96/ai-privacy-check-skill): a first privacy and AI rules check for a concrete use case in Italy and the EU (in Italian)
+- [notion-todo](https://github.com/Matteoikarieth96/notion-todo-skill): run your Notion to-do lists from plain sentences, never mixing one list with another
 
 ## Licence
 
